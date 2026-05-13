@@ -1,0 +1,4 @@
+elevenlabs
+openai
+chainlit-2.4.334-py3-none-any.whl
+numpy

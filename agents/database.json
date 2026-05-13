@@ -1,0 +1,118 @@
+{
+    "airline_dataset": [
+      {
+        "id": "26894F",
+        "name": "John",
+        "surname": "Doe",
+        "username": "johndoe1234",
+        "email": "johndoe1234@gmail.com",
+        "access_key": "5157",
+        "fly_status": {
+          "flight_number": "XG513",
+          "status": "Confirmed",
+          "origin": "Madrid",
+          "destination": "Barcelona",
+          "departure": "2025-04-09T08:30:00",
+          "arrival": "2025-04-09T09:45:00",
+          "price": 90,
+          "currency": "EUR"
+        }
+      },
+      {
+        "id": "74551G",
+        "name": "Mery",
+        "surname": "Smith",
+        "username": "merysmith5432",
+        "email": "merysmith5432@gmail.com",
+        "access_key": "7231",
+        "fly_status": {
+          "flight_number": "XG513",
+          "status": "Confirmed",
+          "origin": "Madrid",
+          "destination": "Barcelona",
+          "departure": "2025-04-10T08:30:00",
+          "arrival": "2025-04-10T09:45:00",
+          "price": 90,
+          "currency": "EUR"
+        }
+      },
+      {
+        "id": "18257P",
+        "name": "Mario",
+        "surname": "García",
+        "username": "mgarcia1987",
+        "email": "mgarcia1987@gmail.com",
+        "access_key": "2552",
+        "fly_status": {
+          "flight_number": "BT237",
+          "status": "Delayed",
+          "origin": "Madrid",
+          "destination": "Barcelona",
+          "departure": "2025-04-15T19:00:00",
+          "arrival": "2025-04-15T20:10:00",
+          "price": 75,
+          "currency": "EUR"
+        }
+      }
+    ],
+    "cars_dataset": [
+      {
+        "model": "Seat Ibiza",
+        "price": 50,
+        "currency": "EUR",
+        "locations": [
+          "Terminal 1",
+          "Terminal 3",
+          "Terminal 4"
+        ]
+      },
+      {
+        "model": "Renault Megane",
+        "price": 75,
+        "currency": "EUR",
+        "locations": [
+          "Terminal 1",
+          "Terminal 2",
+          "Terminal 4"
+        ]
+      }
+    ],
+    "fights_dataset": [
+      {
+        "XG513": {
+          "origin": "Madrid",
+          "destination": "Barcelona",
+          "departure": "2025-04-09T08:30:00",
+          "arrival": "2025-04-09T09:45:00",
+          "price": 90,
+          "currency": "EUR"
+        },
+        "AZ455": {
+          "origin": "Madrid",
+          "destination": "Barcelona",
+          "departure": "2025-04-10T14:15:00",
+          "arrival": "2025-04-10T15:30:00",
+          "price": 115,
+          "currency": "EUR"
+        },
+        "BT237": {
+          "origin": "Madrid",
+          "destination": "Barcelona",
+          "departure": "2025-04-10T19:00:00",
+          "arrival": "2025-04-10T20:10:00",
+          "price": 75,
+          "currency": "EUR"
+        }
+      }
+    ],
+    "car_rental_dataset": {
+      "26894F": {
+        "model": null,
+        "booking_date": null
+      },
+      "54327L": {
+        "model": "Seat Ibiza",
+        "booking_date": "26/03/2025"
+      }
+    }
+  }
