@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
@@ -316,7 +316,6 @@ async def chat(body: ChatRequest):
         "sources": matches,
     }
 
-
 @app.post(
     "/tts",
     responses={
@@ -324,10 +323,7 @@ async def chat(body: ChatRequest):
             "description": "MP3 audio stream",
             "content": {
                 "audio/mpeg": {
-                    "schema": {
-                        "type": "string",
-                        "format": "binary"
-                    }
+                    "schema": {"type": "string", "format": "binary"}
                 }
             },
         }
@@ -354,17 +350,11 @@ async def tts(body: TTSRequest):
     if response.status_code >= 400:
         raise HTTPException(status_code=response.status_code, detail=response.text)
 
-    file_name = f"tts_{uuid.uuid4().hex}.mp3"
-    file_path = OUTPUT_DIR / file_name
-    file_path.write_bytes(response.content)
-
-    return FileResponse(
-        path=file_path,
+    return StreamingResponse(
+        io.BytesIO(response.content),
         media_type="audio/mpeg",
-        filename=file_name,
         headers={
             "X-Eleven-Request-Id": response.headers.get("request-id", ""),
             "X-Eleven-Character-Count": response.headers.get("x-character-count", ""),
         },
     )
-
