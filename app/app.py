@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
-
+from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
@@ -29,6 +29,20 @@ if not API_KEY:
     raise RuntimeError("ELEVENLABS_API_KEY is required")
 
 app = FastAPI(title="elevenlabs-voice-bot-backend")
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        # "http://127.0.0.1:5500",
+        # "http://localhost:5500",
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 kb_store: dict[str, list[dict[str, Any]]] = {}
 
