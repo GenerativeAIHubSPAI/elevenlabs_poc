@@ -21,6 +21,10 @@ if not API_KEY:
 app = FastAPI(title="elevenlabs-voice-bot-backend")
 
 
+@app.get("/")
+async def root():
+    return {"message": "API is running"}
+
 def api_headers(extra: Optional[dict[str, str]] = None) -> dict[str, str]:
     headers = {"xi-api-key": API_KEY}
     if extra:
