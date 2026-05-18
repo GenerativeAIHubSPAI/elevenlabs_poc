@@ -42,6 +42,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Transcript", "X-Reply-Text"],
 )
 
 kb_store: dict[str, list[dict[str, Any]]] = {}
@@ -315,6 +316,68 @@ async def chat(body: ChatRequest):
         "answer": answer,
         "sources": matches,
     }
+
+@app.post("/orchestrate")
+async def orchestrate(
+    audio: UploadFile = File(...),
+    language_code: str | None = Form(default=None),
+    namespace: str = Form(default="default"),
+    voice_id: str = Form(default=VOICE_ID),
+):
+    if not voice_id:
+        raise HTTPException(status_code=400, detail="voice_id is required (set ELEVENLABS_VOICE_ID or pass voice_id)")
+
+    # STT
+    content = await audio.read()
+    stt_data = {"model_id": STT_MODEL}
+    if language_code:
+        stt_data["language_code"] = language_code
+
+    async with httpx.AsyncClient(timeout=300) as client:
+        stt_response = await client.post(
+            f"{BASE_URL}/v1/speech-to-text",
+            headers=api_headers(),
+            data=stt_data,
+            files={"file": (audio.filename, content, audio.content_type or "application/octet-stream")},
+        )
+    if stt_response.status_code >= 400:
+        raise HTTPException(status_code=stt_response.status_code, detail=stt_response.text)
+
+    transcript = stt_response.json().get("text", "")
+
+    # Chat
+    matches = kb_search(transcript, namespace)
+    reply_text = await llm_answer(
+        "You are a helpful voice assistant. Answer using the provided knowledge base context whenever possible.",
+        transcript,
+        matches,
+    )
+
+    # TTS
+    tts_payload = {
+        "text": reply_text,
+        "model_id": TTS_MODEL,
+        "output_format": "mp3_44100_128",
+        "language_code": "es",
+    }
+    async with httpx.AsyncClient(timeout=120) as client:
+        tts_response = await client.post(
+            f"{BASE_URL}/v1/text-to-speech/{voice_id}",
+            headers=api_headers({"Accept": "audio/mpeg", "Content-Type": "application/json"}),
+            json=tts_payload,
+        )
+    if tts_response.status_code >= 400:
+        raise HTTPException(status_code=tts_response.status_code, detail=tts_response.text)
+
+    return StreamingResponse(
+        io.BytesIO(tts_response.content),
+        media_type="audio/mpeg",
+        headers={
+            "X-Transcript": transcript.encode("utf-8").hex(),
+            "X-Reply-Text": reply_text.encode("utf-8").hex(),
+        },
+    )
+
 
 @app.post(
     "/tts",
