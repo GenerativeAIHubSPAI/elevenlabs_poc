@@ -5,3 +5,5 @@ httpx
 python-dotenv
 python-multipart
 pydantic
+boto3
+openai
