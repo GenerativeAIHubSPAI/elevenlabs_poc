@@ -181,3 +181,5 @@ cython_debug/
 agents/tools_old.py
 
 .vscode
+
+.test_scripts

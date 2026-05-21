@@ -1,28 +1,66 @@
-from app.core.config import LLM_PROVIDER
-from app.services.kb import kb_search
+# app/services/llm.py
+
+import httpx
+
+from app.core.config import get_settings
+
+settings = get_settings()
 
 
-def _build_user_content(question: str, context_chunks: list[dict]) -> str:
-    context_text = "\n\n".join(
-        [f"[{i+1}] {c['title']}\n{c['text']}" for i, c in enumerate(context_chunks)]
-    ).strip()
+class LLMClient:
+    async def answer(
+        self,
+        system_prompt: str,
+        question: str,
+        context_chunks: list[dict],
+    ) -> str:
+        context_text = "\n\n".join(
+            [
+                f"[{i + 1}] {c['title']}\n{c['text']}"
+                for i, c in enumerate(context_chunks)
+            ]
+        ).strip()
 
-    base = f"Question:\n{question}"
-    if context_text:
-        base += (
-            f"\n\nKnowledge base context:\n{context_text}\n\n"
-            "Answer clearly. Use the context when possible. "
-            "If the context does not fully support the answer, say so."
-        )
-    return base
+        if not settings.LLM_API_KEY:
+            if context_text:
+                return (
+                    "No LLM key configured yet. "
+                    "Based on the knowledge base, the most relevant context is:\n\n"
+                    f"{context_text[:1200]}"
+                )
+
+            return "No LLM key configured yet, and no relevant knowledge was found."
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    f"Question:\n{question}\n\n"
+                    f"Knowledge base context:\n{context_text}\n\n"
+                    "Answer clearly and only rely on the knowledge base when possible. "
+                    "If the answer is not fully supported, say so."
+                ),
+            },
+        ]
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            r = await client.post(
+                f"{settings.LLM_BASE_URL.rstrip('/')}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.LLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": settings.LLM_MODEL,
+                    "messages": messages,
+                    "temperature": 0.2,
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+
+        return data["choices"][0]["message"]["content"].strip()
 
 
-async def llm_answer(system_prompt: str, question: str, context_chunks: list[dict]) -> str:
-    user_content = _build_user_content(question, context_chunks)
-
-    if LLM_PROVIDER == "bedrock":
-        from app.clients import bedrock
-        return await bedrock.call(system_prompt, user_content)
-
-    from app.clients import openai
-    return await openai.call(system_prompt, user_content)
+llm_client = LLMClient()
