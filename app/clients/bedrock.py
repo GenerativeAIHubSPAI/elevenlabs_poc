@@ -27,7 +27,7 @@ async def call(system_prompt: str, user_content: str) -> str:
             modelId=BEDROCK_MODEL_ID,
             messages=messages,
             system=[{"text": system_prompt}],
-            inferenceConfig={"maxTokens": 10},
+            inferenceConfig={"maxTokens": 300},
         )
         return response["output"]["message"]["content"][0]["text"]
     except Exception as e:

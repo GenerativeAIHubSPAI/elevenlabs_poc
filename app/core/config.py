@@ -1,6 +1,5 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,10 +30,12 @@ class Settings(BaseSettings):
     ELEVENLABS_STT_AUDIO_FORMAT: str = "pcm_16000"
     ELEVENLABS_STT_SAMPLE_RATE: int = 16000
 
-    # LLM
-    LLM_API_KEY: str | None = None
-    LLM_BASE_URL: str = "https://api.openai.com/v1"
-    LLM_MODEL: str = "gpt-4.1-mini"
+    # Bedrock
+    AWS_REGION: str = "eu-west-1"
+    AWS_BEARER_TOKEN_BEDROCK: str | None = None
+    BEDROCK_MODEL_ID: str = "amazon.nova-pro-v1:0"
+    BEDROCK_MAX_TOKENS: int = 700
+    BEDROCK_TEMPERATURE: float = 0.2
 
     # Application
     OUTPUT_DIR: str = "../output/"
@@ -54,11 +55,6 @@ class Settings(BaseSettings):
     @property
     def VOICE_ID(self) -> str | None:
         return self.ELEVENLABS_DEFAULT_VOICE_ID or self.ELEVENLABS_VOICE_ID
-
-    @computed_field
-    @property
-    def LLM_BASE_URL_CLEAN(self) -> str:
-        return self.LLM_BASE_URL.rstrip("/")
 
     @computed_field
     @property
