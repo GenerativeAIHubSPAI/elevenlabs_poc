@@ -1,179 +1,30 @@
-* { box-sizing: border-box; margin: 0; padding: 0; }
+@import "tailwindcss";
 
-body {
-  font-family: system-ui, sans-serif;
-  background: #0f0f0f;
-  color: #e0e0e0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-height: 100vh;
+@keyframes pulse-ring {
+  0%   { transform: scale(0.95); opacity: 0.8; }
+  50%  { transform: scale(1.05); opacity: 0.4; }
+  100% { transform: scale(0.95); opacity: 0.8; }
 }
 
-header {
-  width: 100%;
-  max-width: 760px;
-  padding: 24px 24px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #f7f9fb;
+    color: #191c1e;
+    overflow: hidden;
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    user-select: none;
+  }
 }
 
-h1 {
-  font-size: 1.1rem;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  color: #666;
-  text-align: center;
-}
+@layer utilities {
+  .panel-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+  .animate-pulse-ring { animation: pulse-ring 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
-/* ── Tabs ── */
-.tabs {
-  display: flex;
-  gap: 4px;
-  background: #1a1a1a;
-  border-radius: 10px;
-  padding: 4px;
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 8px 0;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: #666;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.tab-btn.active { background: #2a2a2a; color: #e0e0e0; }
-
-/* ── Layout ── */
-main {
-  width: 100%;
-  max-width: 760px;
-  flex: 1;
-  padding: 16px 24px;
-  display: flex;
-  flex-direction: column;
-}
-
-.tab-panel { display: none; flex: 1; flex-direction: column; }
-.tab-panel.active { display: flex; }
-
-/* ── Chat ── */
-#chat-log {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  background: #1a1a1a;
-  border-radius: 16px;
-  min-height: 400px;
-}
-
-.msg {
-  max-width: 75%;
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
-
-.msg.user      { align-self: flex-end; background: #2563eb; color: #fff; }
-.msg.assistant { align-self: flex-start; background: #2a2a2a; color: #e0e0e0; }
-.msg.error     { align-self: center; color: #ef4444; font-size: 0.8rem; font-style: italic; }
-
-/* ── Live panel ── */
-#live-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-  position: relative;
-  border-radius: 20px;
-  overflow: hidden;
-}
-
-#live-bg {
-  position: absolute;
-  inset: 0;
-  border-radius: 20px;
-  background: radial-gradient(ellipse at 50% 70%, #0d1f4a 0%, #0a0a0a 70%);
-  transition: opacity 0.4s;
-}
-
-#wave-canvas {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  height: 240px;
-}
-
-#live-label {
-  position: relative;
-  z-index: 1;
-  font-size: 0.78rem;
-  color: #334;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  margin-top: 24px;
-}
-
-/* ── Botón ── */
-.controls {
-  padding: 0 0 32px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-#toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 22px;
-  border: 1px solid #2a2a2a;
-  border-radius: 999px;
-  background: #1a1a1a;
-  color: #888;
-  font-size: 0.82rem;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
-  letter-spacing: 0.03em;
-}
-
-#toggle-btn:hover { border-color: #444; color: #ccc; }
-
-#toggle-btn .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #444;
-  transition: background 0.2s, box-shadow 0.2s;
-  flex-shrink: 0;
-}
-
-#toggle-btn.active     .dot { background: #16a34a; box-shadow: 0 0 6px #16a34a; }
-#toggle-btn.speaking   .dot { background: #dc2626; box-shadow: 0 0 6px #dc2626; }
-#toggle-btn.processing .dot { background: #d97706; box-shadow: 0 0 6px #d97706; }
-#toggle-btn.replying   .dot { background: #a855f7; box-shadow: 0 0 6px #a855f7; }
-
-#toggle-btn.active     { border-color: #1e3a1e; color: #aaa; }
-#toggle-btn.speaking   { border-color: #3a1e1e; color: #aaa; }
-#toggle-btn.processing { border-color: #3a2e1e; color: #aaa; cursor: not-allowed; }
-#toggle-btn.replying   { border-color: #2e1a4a; color: #aaa; cursor: not-allowed; }
-
-#status-text {
-  font-size: 0.75rem;
-  color: #444;
-  letter-spacing: 0.02em;
+  .custom-scrollbar::-webkit-scrollbar       { width: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 }
