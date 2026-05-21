@@ -1,0 +1,20 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Monta el proyecto completo en el contenedor — los cambios en local se reflejan al instante
+      - ..:/workspace:cached
+      # Persistencia de node_modules dentro del contenedor (evita conflictos con el host)
+      - node_modules:/workspace/frontend/node_modules
+    ports:
+      - "3000:3000"
+      - "8000:8000"
+    env_file:
+      - ../.env
+    # Mantiene el contenedor vivo para que VS Code pueda conectarse
+    command: sleep infinity
+
+volumes:
+  node_modules:

@@ -1,0 +1,12 @@
+venv/
+frontend/
+frontend_old/
+__pycache__/
+*.py[cod]
+*.whl
+.env
+.env.*
+output/
+.git/
+.devcontainer/
+*.md
