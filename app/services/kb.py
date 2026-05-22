@@ -1,3 +1,5 @@
+# app/services/kb.py
+
 import re
 import uuid
 from typing import Any
@@ -9,23 +11,37 @@ def normalize(text: str) -> list[str]:
     return re.findall(r"\b\w+\b", text.lower())
 
 
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 80) -> list[str]:
+def chunk_text(
+    text: str,
+    chunk_size: int = 500,
+    overlap: int = 80,
+    min_words: int = 10,
+) -> list[str]:
     words = text.split()
-    if not words:
+
+    if len(words) < min_words:
         return []
 
     chunks = []
     step = max(1, chunk_size - overlap)
 
     for i in range(0, len(words), step):
-        chunk = " ".join(words[i:i + chunk_size]).strip()
+        chunk = " ".join(words[i : i + chunk_size]).strip()
+
         if chunk:
             chunks.append(chunk)
 
     return chunks
 
 
-def kb_ingest_text(title: str, text: str, namespace: str):
+def kb_ingest_text(
+    title: str,
+    text: str,
+    namespace: str,
+    source_type: str = "text",
+    source_name: str | None = None,
+    page: int | None = None,
+):
     if namespace not in kb_store:
         kb_store[namespace] = []
 
@@ -38,7 +54,11 @@ def kb_ingest_text(title: str, text: str, namespace: str):
             "title": title,
             "text": chunk,
             "namespace": namespace,
+            "source_type": source_type,
+            "source_name": source_name,
+            "page": page,
         }
+
         kb_store[namespace].append(item)
         saved.append(item)
 
@@ -52,6 +72,7 @@ def kb_search(query: str, namespace: str, top_k: int = 4):
     for item in kb_store.get(namespace, []):
         c_tokens = set(normalize(item["text"]))
         overlap = len(q_tokens & c_tokens)
+
         if overlap == 0:
             continue
 
@@ -59,4 +80,5 @@ def kb_search(query: str, namespace: str, top_k: int = 4):
         results.append({**item, "score": round(score, 4)})
 
     results.sort(key=lambda x: x["score"], reverse=True)
+
     return results[:top_k]
