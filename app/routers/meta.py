@@ -1,62 +1,37 @@
+# app/routers/meta.py
+
 from fastapi import APIRouter
-from app.core.config import AGENT_ID, VOICE_ID, TTS_MODEL, STT_MODEL, LLM_MODEL
-from app.services.elevenlabs import get_json
+
+from app.core.config import get_settings
 
 router = APIRouter()
-
-
-@router.get("/")
-async def root():
-    return {
-        "message": "API is running",
-        "docs": "/docs",
-        "routes": [
-            "/health",
-            "/eleven/user",
-            "/eleven/models",
-            "/eleven/voices",
-            "/eleven/agents",
-            "/config",
-            "/stt",
-            "/kb/ingest-text",
-            "/kb/search",
-            "/chat",
-            "/tts",
-        ],
-    }
-
-
-@router.get("/health")
-async def health():
-    return {"ok": True}
-
-
-@router.get("/eleven/user")
-async def eleven_user():
-    return await get_json("/v1/user")
-
-
-@router.get("/eleven/models")
-async def eleven_models():
-    return await get_json("/v1/models")
-
-
-@router.get("/eleven/voices")
-async def eleven_voices():
-    return await get_json("/v1/voices")
-
-
-@router.get("/eleven/agents")
-async def eleven_agents():
-    return await get_json("/v1/convai/agents")
+settings = get_settings()
 
 
 @router.get("/config")
 async def config():
     return {
-        "agent_id": AGENT_ID or None,
-        "voice_id": VOICE_ID or None,
-        "tts_model": TTS_MODEL,
-        "stt_model": STT_MODEL,
-        "llm_model": LLM_MODEL,
+        "elevenlabs": {
+            "base_url": settings.ELEVENLABS_BASE_URL,
+            "voice_id": settings.ELEVENLABS_DEFAULT_VOICE_ID or settings.ELEVENLABS_VOICE_ID,
+            "agent_id": settings.ELEVENLABS_AGENT_ID,
+            "tts_model": settings.ELEVENLABS_TTS_MODEL,
+            "stt_model": settings.ELEVENLABS_STT_MODEL,
+            "realtime_stt_model": settings.ELEVENLABS_REALTIME_STT_MODEL,
+            "tts_output_format": settings.ELEVENLABS_TTS_OUTPUT_FORMAT,
+            "stt_audio_format": settings.ELEVENLABS_STT_AUDIO_FORMAT,
+            "stt_sample_rate": settings.ELEVENLABS_STT_SAMPLE_RATE,
+        },
+        "llm": {
+            "base_url": settings.LLM_BASE_URL,
+            "model": settings.LLM_MODEL,
+            "configured": bool(settings.LLM_API_KEY),
+        },
+        "kb": {
+            "default_namespace": settings.KB_DEFAULT_NAMESPACE,
+            "chunk_size": settings.KB_CHUNK_SIZE,
+            "chunk_overlap": settings.KB_CHUNK_OVERLAP,
+            "top_k": settings.KB_TOP_K,
+        },
+        "output_dir": settings.OUTPUT_DIR,
     }

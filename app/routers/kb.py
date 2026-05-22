@@ -1,13 +1,21 @@
+# app/routers/kb.py
+
 from fastapi import APIRouter
+
 from app.schemas.requests import KBIngestTextRequest, KBSearchRequest
 from app.services.kb import kb_ingest_text, kb_search
 
 router = APIRouter()
 
 
-@router.post("/kb/ingest-text")
+@router.post("/ingest-text")
 async def ingest_text(body: KBIngestTextRequest):
-    saved = kb_ingest_text(body.title, body.text, body.namespace)
+    saved = kb_ingest_text(
+        title=body.title,
+        text=body.text,
+        namespace=body.namespace,
+    )
+
     return {
         "namespace": body.namespace,
         "ingested_chunks": len(saved),
@@ -15,9 +23,13 @@ async def ingest_text(body: KBIngestTextRequest):
     }
 
 
-@router.post("/kb/search")
+@router.post("/search")
 async def search_kb(body: KBSearchRequest):
     return {
         "namespace": body.namespace,
-        "results": kb_search(body.query, body.namespace, body.top_k),
+        "results": kb_search(
+            query=body.query,
+            namespace=body.namespace,
+            top_k=body.top_k,
+        ),
     }

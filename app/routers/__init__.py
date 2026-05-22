@@ -1,1 +1,1 @@
-from . import meta, stt, kb, chat, tts
+# app/routers/__init__.py
