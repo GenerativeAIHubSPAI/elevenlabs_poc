@@ -1,6 +1,6 @@
 import { useRef, useCallback } from "react";
 import { useMicVAD } from "@ricky0123/vad-react";
-import { sendAudio, hexDecode } from "../../../services/api.js";
+import { sendAudio } from "../../../services/api.js";
 
 export function useConversation({ visualizer, onMessage, onStateChange }) {
   const isActiveRef     = useRef(false);
@@ -36,8 +36,8 @@ export function useConversation({ visualizer, onMessage, onStateChange }) {
 
       try {
         const res        = await sendAudio(audio, 16000);
-        const transcript = hexDecode(res.headers.get("X-Transcript"));
-        const replyText  = hexDecode(res.headers.get("X-Reply-Text"));
+        const transcript = decodeURIComponent(res.headers.get("X-Transcript") ?? "");
+        const replyText  = decodeURIComponent(res.headers.get("X-Reply-Text") ?? "");
 
         if (transcript) onMessage("user", transcript);
         if (replyText)  onMessage("assistant", replyText);

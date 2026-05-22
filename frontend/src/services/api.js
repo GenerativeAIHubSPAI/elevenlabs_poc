@@ -1,13 +1,6 @@
 const BASE_URL = "http://localhost:8000";
-const ORCHESTRATOR_URL = `${BASE_URL}/orchestrate`;
+const VOICE_TURN_URL = `${BASE_URL}/voice/turn`;
 const KB_INGEST_FILE_URL = `${BASE_URL}/kb/ingest-file`;
-
-export const hexDecode = (hex) =>
-  hex
-    ? new TextDecoder().decode(
-        new Uint8Array(hex.match(/.{1,2}/g).map((b) => parseInt(b, 16)))
-      )
-    : null;
 
 function encodeWav(samples, sr) {
   const buf = new ArrayBuffer(44 + samples.length * 2);
@@ -50,11 +43,11 @@ export async function uploadFile(file, namespace = "default") {
 export async function sendAudio(samples, sr) {
   const form = new FormData();
   form.append(
-    "audio",
+    "file",
     new Blob([encodeWav(samples, sr)], { type: "audio/wav" }),
     "speech.wav"
   );
-  const res = await fetch(ORCHESTRATOR_URL, { method: "POST", body: form });
+  const res = await fetch(VOICE_TURN_URL, { method: "POST", body: form });
   if (!res.ok) throw new Error(`Error ${res.status}: ${await res.text()}`);
   return res;
 }
