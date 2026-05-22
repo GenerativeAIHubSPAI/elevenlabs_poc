@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     BEDROCK_MAX_TOKENS: int = 700
     BEDROCK_TEMPERATURE: float = 0.2
 
+    BEDROCK_EMBEDDING_MODEL_ID: str = "amazon.titan-embed-text-v2:0"
+    BEDROCK_EMBEDDING_DIMENSIONS: int = 1024
+    
     # Application
     OUTPUT_DIR: str = "../output/"
 
