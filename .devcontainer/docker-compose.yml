@@ -11,8 +11,6 @@ services:
     ports:
       - "3000:3000"
       - "8000:8000"
-    env_file:
-      - ../.env
     # Mantiene el contenedor vivo para que VS Code pueda conectarse
     command: sleep infinity
 
