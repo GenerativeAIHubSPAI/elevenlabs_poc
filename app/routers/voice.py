@@ -4,7 +4,8 @@ import asyncio
 import base64
 import json
 from urllib.parse import urlencode
-
+import contextlib
+import uuid
 import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -35,46 +36,63 @@ def _build_realtime_stt_url(language_code: str | None = None) -> str:
 
     return f"wss://api.elevenlabs.io/v1/speech-to-text/realtime?{urlencode(query)}"
 
-
 async def _send_answer_audio(
     websocket: WebSocket,
     answer: str,
     voice_id: str,
+    turn_id: str,
     language_code: str | None = None,
 ):
     await websocket.send_json(
         {
             "type": "assistant_text",
+            "turn_id": turn_id,
             "text": answer,
         }
     )
 
-    async for chunk in eleven.stream_tts(
-        text=answer,
-        voice_id=voice_id,
-        model_id=settings.ELEVENLABS_TTS_MODEL,
-        output_format=settings.ELEVENLABS_TTS_OUTPUT_FORMAT,
-        language_code=language_code,
-    ):
+    try:
+        async for chunk in eleven.stream_tts(
+            text=answer,
+            voice_id=voice_id,
+            model_id=settings.ELEVENLABS_TTS_MODEL,
+            output_format=settings.ELEVENLABS_TTS_OUTPUT_FORMAT,
+            language_code=language_code,
+        ):
+            await websocket.send_json(
+                {
+                    "type": "assistant_audio_chunk",
+                    "turn_id": turn_id,
+                    "audio_base64": base64.b64encode(chunk).decode("utf-8"),
+                    "format": settings.ELEVENLABS_TTS_OUTPUT_FORMAT,
+                }
+            )
+
         await websocket.send_json(
             {
-                "type": "assistant_audio_chunk",
-                "audio_base64": base64.b64encode(chunk).decode("utf-8"),
-                "format": settings.ELEVENLABS_TTS_OUTPUT_FORMAT,
+                "type": "assistant_audio_done",
+                "turn_id": turn_id,
             }
         )
 
-    await websocket.send_json({"type": "assistant_audio_done"})
-
+    except asyncio.CancelledError:
+        with contextlib.suppress(Exception):
+            await websocket.send_json(
+                {
+                    "type": "assistant_interrupted",
+                    "turn_id": turn_id,
+                }
+            )
+        raise
 
 @router.websocket("/voice-stream")
 async def voice_stream(websocket: WebSocket):
     await websocket.accept()
 
     voice_id = (
-    websocket.query_params.get("voice_id")
-    or settings.ELEVENLABS_DEFAULT_VOICE_ID
-    or settings.ELEVENLABS_VOICE_ID
+        websocket.query_params.get("voice_id")
+        or settings.ELEVENLABS_DEFAULT_VOICE_ID
+        or settings.ELEVENLABS_VOICE_ID
     )
     namespace = websocket.query_params.get("namespace") or settings.KB_DEFAULT_NAMESPACE
     language_code = websocket.query_params.get("language_code")
@@ -91,6 +109,9 @@ async def voice_stream(websocket: WebSocket):
 
     stt_url = _build_realtime_stt_url(language_code=language_code)
 
+    current_tts_task: asyncio.Task | None = None
+    current_turn_id: str | None = None
+
     try:
         async with websockets.connect(
             stt_url,
@@ -99,6 +120,7 @@ async def voice_stream(websocket: WebSocket):
         ) as stt_ws:
 
             async def browser_to_elevenlabs():
+                nonlocal current_tts_task, current_turn_id
                 while True:
                     msg = await websocket.receive_json()
 
@@ -114,7 +136,22 @@ async def voice_stream(websocket: WebSocket):
                                 }
                             )
                         )
+                    elif msg.get("type") == "interrupt":
+                        if current_tts_task and not current_tts_task.done():
+                            current_tts_task.cancel()
 
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await current_tts_task
+
+                        await websocket.send_json(
+                            {
+                                "type": "interrupt_ack",
+                                "turn_id": current_turn_id,
+                            }
+                        )
+
+                        current_tts_task = None
+                        current_turn_id = None
                     elif msg.get("type") == "commit":
                         await stt_ws.send(
                             json.dumps(
@@ -128,10 +165,17 @@ async def voice_stream(websocket: WebSocket):
                         )
 
                     elif msg.get("type") == "close":
+                        if current_tts_task and not current_tts_task.done():
+                            current_tts_task.cancel()
+
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await current_tts_task
+
                         await websocket.close()
                         break
 
             async def elevenlabs_to_browser():
+                nonlocal current_tts_task, current_turn_id
                 while True:
                     raw = await stt_ws.recv()
                     event = json.loads(raw)
@@ -199,11 +243,22 @@ async def voice_stream(websocket: WebSocket):
                             }
                         )
 
-                        await _send_answer_audio(
-                            websocket=websocket,
-                            answer=answer,
-                            voice_id=voice_id,
-                            language_code=language_code,
+                        if current_tts_task and not current_tts_task.done():
+                            current_tts_task.cancel()
+
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await current_tts_task
+
+                        current_turn_id = str(uuid.uuid4())
+
+                        current_tts_task = asyncio.create_task(
+                            _send_answer_audio(
+                                websocket=websocket,
+                                answer=answer,
+                                voice_id=voice_id,
+                                turn_id=current_turn_id,
+                                language_code=None,
+                            )
                         )
 
                     elif message_type and "error" in message_type:
@@ -220,9 +275,14 @@ async def voice_stream(websocket: WebSocket):
             )
 
     except WebSocketDisconnect:
+        if current_tts_task and not current_tts_task.done():
+            current_tts_task.cancel()
         return
 
     except Exception as exc:
+        if current_tts_task and not current_tts_task.done():
+            current_tts_task.cancel()
+
         await websocket.send_json(
             {
                 "type": "error",
