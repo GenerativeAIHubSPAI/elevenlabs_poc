@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import TopAppBar from "./components/TopAppBar.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import { ChatLog } from "./features/chat/index.js";
-import { VoiceControls, useVisualizer, useConversation } from "./features/voice/index.js";
+import { VoiceControls, useVisualizer, useConversationStreaming } from "./features/voice/index.js";
 import "./styles/main.css";
 
 export default function App() {
@@ -27,10 +27,13 @@ export default function App() {
     setMessages((prev) => [...prev, { role, text }]);
   }, []);
 
-  const conversation = useConversation({
+  const conversation = useConversationStreaming({
     visualizer,
     onMessage,
     onStateChange: setState,
+    voiceId:      import.meta.env.VITE_ELEVENLABS_VOICE_ID,
+    namespace:    import.meta.env.VITE_KB_NAMESPACE ?? "default",
+    languageCode: import.meta.env.VITE_LANGUAGE_CODE ?? "spa",
   });
 
   useEffect(() => {
