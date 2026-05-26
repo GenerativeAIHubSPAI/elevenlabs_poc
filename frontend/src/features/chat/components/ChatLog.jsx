@@ -9,7 +9,7 @@ export default function ChatLog({ messages }) {
   }, [messages]);
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto flex flex-col gap-4 p-6 custom-scrollbar">
+    <div ref={containerRef} className="flex-1 overflow-y-auto flex flex-col gap-4 p-6 pb-36 custom-scrollbar">
       {messages.map((msg, i) => (
         <div
           key={i}
