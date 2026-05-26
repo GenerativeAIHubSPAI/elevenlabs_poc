@@ -13,14 +13,6 @@ import app.routers.voice_turn as voice_turn
 
 app = FastAPI(title="ElevenLabs Voice Bot Backend")
 
-app.include_router(health.router, tags=["meta"])
-app.include_router(stt.router, prefix="/stt", tags=["stt"])
-app.include_router(tts.router, prefix="/tts", tags=["tts"])
-app.include_router(kb.router, prefix="/kb", tags=["kb"])
-app.include_router(chat.router, prefix="/chat", tags=["chat"])
-app.include_router(voice.router, prefix="/chat", tags=["voice"])
-app.include_router(voice_turn.router, prefix="/voice", tags=["voice-turn"])
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -32,6 +24,14 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Transcript", "X-Reply-Text"],
 )
+
+app.include_router(health.router, tags=["meta"])
+app.include_router(stt.router, prefix="/stt", tags=["stt"])
+app.include_router(tts.router, prefix="/tts", tags=["tts"])
+app.include_router(kb.router, prefix="/kb", tags=["kb"])
+app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(voice.router, prefix="/chat", tags=["voice"])
+app.include_router(voice_turn.router, prefix="/voice", tags=["voice-turn"])
 
 
 @app.get("/")
