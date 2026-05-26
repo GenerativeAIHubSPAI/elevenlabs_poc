@@ -177,7 +177,11 @@ async def voice_stream(websocket: WebSocket):
             async def elevenlabs_to_browser():
                 nonlocal current_tts_task, current_turn_id
                 while True:
-                    raw = await stt_ws.recv()
+                    try:
+                        raw = await stt_ws.recv()
+                    except websockets.exceptions.ConnectionClosed:
+                        # ElevenLabs closed the STT socket cleanly — nothing to do
+                        return
                     event = json.loads(raw)
                     message_type = event.get("message_type")
 
@@ -283,10 +287,11 @@ async def voice_stream(websocket: WebSocket):
         if current_tts_task and not current_tts_task.done():
             current_tts_task.cancel()
 
-        await websocket.send_json(
-            {
-                "type": "error",
-                "message": str(exc),
-            }
-        )
-        await websocket.close()
+        with contextlib.suppress(Exception):
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "message": str(exc),
+                }
+            )
+            await websocket.close()
