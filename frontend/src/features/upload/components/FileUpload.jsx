@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { uploadFile } from "../../../services/api.js";
 
-const ACCEPTED = ".json,.csv,.xml,.txt";
-const ACCEPTED_SET = new Set(["json", "csv", "xml", "txt"]);
+const ACCEPTED = ".pdf";
+const ACCEPTED_SET = new Set(["pdf"]);
 
 
 function statusIcon(status) {
@@ -30,7 +30,7 @@ export default function FileUpload({ namespace = "default" }) {
     const ext = file.name.split(".").pop().toLowerCase();
     if (!ACCEPTED_SET.has(ext)) {
       setStatus("error");
-      setMessage(`Tipo no soportado (.${ext}). Acepta: JSON, CSV, XML, TXT`);
+      setMessage(`Tipo no soportado (.${ext}). Solo se aceptan ficheros PDF.`);
       return;
     }
 
@@ -40,7 +40,7 @@ export default function FileUpload({ namespace = "default" }) {
     try {
       const result = await uploadFile(file, namespace);
       setStatus("success");
-      setMessage(`${result.ingested_chunks} fragmentos indexados de "${result.filename}"`);
+      setMessage(`${result.ingested_chunks} fragmentos indexados de "${result.source_name}" (${result.pages_processed} páginas)`);
     } catch (e) {
       setStatus("error");
       setMessage(e.message);
@@ -110,7 +110,7 @@ export default function FileUpload({ namespace = "default" }) {
           <p className="text-sm font-bold text-[#191c1e] mb-1">
             {isDragging ? "Suelta el fichero aquí" : "Arrastra o selecciona un fichero"}
           </p>
-          <p className="text-[11px] text-[#565e74] mb-4">JSON, CSV, XML, TXT · máx. 5 MB</p>
+          <p className="text-[11px] text-[#565e74] mb-4">PDF · máx. 20 MB</p>
           <button
             onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
             className="px-6 py-2 bg-[#eceef0] text-[#565e74] hover:bg-[#4f5f76] hover:text-white rounded-lg text-sm font-bold transition-all"
