@@ -10,6 +10,7 @@ export default function App() {
   const [isTranscriptionView, setIsTranscriptionView] = useState(false);
   const [state, setState]                           = useState("idle");
   const [messages, setMessages]                     = useState([]);
+  const [muted, setMuted]                           = useState(false);
   const [config, setConfig] = useState({
     idioma: "spa",
     sexo:   "hombre",
@@ -60,6 +61,11 @@ export default function App() {
     if (!isTranscriptionView) visualizer.resizeCanvas();
   }, [isTranscriptionView, visualizer]);
 
+  const handleMuteToggle = useCallback(() => {
+    const nowMuted = conversation.toggleMute();
+    setMuted(nowMuted);
+  }, [conversation]);
+
   const handleToggle = useCallback(async () => {
     if (!conversation.isRunning()) {
       // No iniciar si el hook está en un estado transitorio inconsistente
@@ -70,6 +76,7 @@ export default function App() {
     } else {
       // Colgar siempre está permitido, incluso mientras el asistente habla.
       // stop() ya llama a stopPlayback() internamente.
+      setMuted(false);
       conversation.stop();
     }
   }, [conversation]);
@@ -141,7 +148,7 @@ export default function App() {
             </div>
 
             {/* Controls flotantes — visibles en ambas vistas */}
-            <VoiceControls state={state} onClick={handleToggle} lightBg={isTranscriptionView} />
+            <VoiceControls state={state} onClick={handleToggle} onMuteToggle={handleMuteToggle} muted={muted} lightBg={isTranscriptionView} />
 
 
           </section>

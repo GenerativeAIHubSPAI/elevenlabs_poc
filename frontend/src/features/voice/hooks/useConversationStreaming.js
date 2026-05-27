@@ -70,6 +70,7 @@ export function useConversationStreaming({
   const wsRef = useRef(null);
   const isActiveRef = useRef(false);
   const isReplyingRef = useRef(false);
+  const mutedRef = useRef(false);
 
   // Capture pipeline (16 kHz AudioContext + ScriptProcessor)
   const captureCtxRef = useRef(null);
@@ -233,6 +234,7 @@ export function useConversationStreaming({
 
     processor.onaudioprocess = (e) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      if (mutedRef.current) return; // micrófono silenciado — no enviar audio al servidor
 
       // Convert Float32 [-1, 1] samples to signed Int16 PCM
       const float32 = e.inputBuffer.getChannelData(0);
@@ -363,5 +365,12 @@ export function useConversationStreaming({
   const isRunning = useCallback(() => isActiveRef.current, []);
   const isBusy = useCallback(() => isReplyingRef.current, []);
 
-  return { start, stop, interrupt, isRunning, isBusy };
+  const toggleMute = useCallback(() => {
+    mutedRef.current = !mutedRef.current;
+    return mutedRef.current; // devuelve el nuevo estado
+  }, []);
+
+  const isMuted = useCallback(() => mutedRef.current, []);
+
+  return { start, stop, interrupt, isRunning, isBusy, toggleMute, isMuted };
 }
