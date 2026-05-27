@@ -63,6 +63,7 @@ export default function App() {
   const handleToggle = useCallback(async () => {
     if (conversation.isBusy()) return;
     if (!conversation.isRunning()) {
+      setMessages([]); // nueva sesión → limpiar el historial anterior
       try { await conversation.start(); }
       catch (e) { setState("idle"); }
     } else {
