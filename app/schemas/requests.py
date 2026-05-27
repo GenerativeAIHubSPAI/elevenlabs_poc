@@ -115,16 +115,35 @@ class KBSearchRequest(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    user_id: str = Field(
+        default="anonymous",
+        examples=["anonymous", "user-123"],
+        description=(
+            "User identifier. For now this can be provided by the frontend. "
+            "Later it should come from authentication."
+        ),
+    )
+
+    session_id: str = Field(
+        examples=["demo-session-001"],
+        description=(
+            "Conversation/session identifier. The frontend should generate this UUID "
+            "when a new conversation starts and reuse it for follow-up questions."
+        ),
+    )
+
     question: str = Field(
         examples=["¿Qué puede hacer este asistente?"],
     )
+
     namespace: str = Field(
         default="default",
-        examples=["default"],
+        examples=["default", "products"],
     )
+
     top_k: int = Field(
-        default=4,
-        examples=[4],
+        default=7,
+        examples=[7],
         ge=1,
         le=20,
     )
@@ -233,3 +252,5 @@ class SourceChunk(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[SourceChunk]
+    user_id: str
+    session_id: str
