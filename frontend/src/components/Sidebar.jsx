@@ -105,13 +105,6 @@ export default function Sidebar({ isOpen, onToggle, config, onConfigChange }) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-[#c7c4d7] bg-[#f2f4f6]">
-          <button className="w-full py-3 bg-[#4f5f76] text-white font-bold rounded-xl hover:brightness-110 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
-            <span className="material-symbols-outlined">save</span>
-            Save Changes
-          </button>
-        </div>
       </aside>
   );
 }
