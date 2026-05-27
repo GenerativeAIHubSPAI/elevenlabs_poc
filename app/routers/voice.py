@@ -22,19 +22,19 @@ eleven = ElevenLabsClient()
 # Key: (language_code, gender, tone)  → ElevenLabs voice_id
 VOICE_MAP: dict[tuple[str, str, str], str] = {
     # ── Spanish ────────────────────────────────────────────────────────────────
-    ("spa", "hombre", "energico"): "eEyWolF7iBpMA65GbtAm",
-    ("spa", "hombre", "cercano"):  "w8u1dIxiWVelUtUQg1MB",
-    ("spa", "hombre", "serio"):    "m8dLaNJTf2Faapk51VKn",
-    ("spa", "mujer",  "energico"): "uQw4jpKzMLrZuo0RLPS9",
-    ("spa", "mujer",  "cercano"):  "1eHrpOW5l98cxiSRjbzJ",
-    ("spa", "mujer",  "serio"):    "kwNLkNjbQHMw9YUFZsHI",
+    ("es", "hombre", "energico"): "eEyWolF7iBpMA65GbtAm",
+    ("es", "hombre", "cercano"):  "w8u1dIxiWVelUtUQg1MB",
+    ("es", "hombre", "serio"):    "m8dLaNJTf2Faapk51VKn",
+    ("es", "mujer",  "energico"): "uQw4jpKzMLrZuo0RLPS9",
+    ("es", "mujer",  "cercano"):  "1eHrpOW5l98cxiSRjbzJ",
+    ("es", "mujer",  "serio"):    "kwNLkNjbQHMw9YUFZsHI",
     # ── English ────────────────────────────────────────────────────────────────
-    ("eng", "hombre", "energico"): "s0XGIcqmceN2l7kjsqoZ",
-    ("eng", "hombre", "cercano"):  "TWutjvRaJqAX89preB4e",
-    ("eng", "hombre", "serio"):    "xKhbyU7E3bC6T89Kn26c",
-    ("eng", "mujer",  "energico"): "8vf2Pg7VZD0Piv8GA8v9",
-    ("eng", "mujer",  "cercano"):  "2vbhUP8zyKg4dEZaTWGn",
-    ("eng", "mujer",  "serio"):    "gJx1vCzNCD1EQHT212Ls",
+    ("en", "hombre", "energico"): "s0XGIcqmceN2l7kjsqoZ",
+    ("en", "hombre", "cercano"):  "TWutjvRaJqAX89preB4e",
+    ("en", "hombre", "serio"):    "xKhbyU7E3bC6T89Kn26c",
+    ("en", "mujer",  "energico"): "8vf2Pg7VZD0Piv8GA8v9",
+    ("en", "mujer",  "cercano"):  "2vbhUP8zyKg4dEZaTWGn",
+    ("en", "mujer",  "serio"):    "gJx1vCzNCD1EQHT212Ls",
 }
 
 
