@@ -1,3 +1,11 @@
+"""Amazon Bedrock client utilities.
+
+This module contains helper logic for calling Amazon Bedrock Runtime models from
+the backend. It centralizes Bedrock client creation, model invocation, and
+provider-specific request handling so routers and services do not need to manage
+AWS client details directly.
+"""
+
 import os
 
 import boto3

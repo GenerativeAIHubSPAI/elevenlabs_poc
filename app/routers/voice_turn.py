@@ -1,4 +1,13 @@
-# app/routers/voice_turn.py
+"""Single-turn voice orchestration routes.
+
+This module exposes an audio-in/audio-out voice turn endpoint. It accepts a user
+audio file, transcribes it with ElevenLabs, retrieves relevant knowledge-base
+context, generates an assistant answer, and streams the spoken response back to
+the client.
+
+This route provides a simpler alternative to the realtime WebSocket pipeline for
+testing and frontend integration.
+"""
 
 from urllib.parse import quote
 

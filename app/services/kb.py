@@ -1,4 +1,17 @@
-# app/services/kb.py
+"""In-memory semantic knowledge-base service.
+
+This module stores knowledge-base chunks by namespace and retrieves relevant
+chunks for user questions using text embeddings and cosine similarity.
+
+The service supports plain-text and PDF-derived ingestion through shared chunking
+logic. Each chunk keeps metadata such as title, source type, source name, page,
+and chunk index. Embeddings are generated at ingestion time and stored in memory
+with each chunk. Search embeds the user query, compares it against stored chunk
+vectors, and returns the highest-scoring matches.
+
+The storage is intentionally temporary and resets when the server restarts. Use a
+persistent database or vector store before deploying this service in production.
+"""
 
 from __future__ import annotations
 

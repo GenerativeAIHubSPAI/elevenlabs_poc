@@ -1,4 +1,8 @@
-# app/core/__init__.py
+"""Core application package.
+
+This package contains shared application configuration and low-level utilities
+used across routers, services, clients, and schemas.
+"""
 
 from app.core.config import Settings, get_settings
 

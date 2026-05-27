@@ -1,9 +1,19 @@
 # app/services/memory.py
 
-import uuid
+"""In-memory conversation memory service.
+
+This module stores short-term conversation history for active user sessions. It
+provides helpers to add conversation turns, retrieve recent history, format
+history for LLM prompts, and clear sessions during development.
+
+Memory is keyed by a conversation identifier, typically built from user ID and
+session ID. The storage is temporary and resets when the server restarts.
+"""
+
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
+import uuid
 
 conversation_store: dict[str, list[dict[str, Any]]] = defaultdict(list)
 

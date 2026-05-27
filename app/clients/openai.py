@@ -1,4 +1,9 @@
-# app/clients/openai.py
+"""OpenAI-compatible client utilities.
+
+This module contains helper logic for creating and configuring OpenAI-compatible
+clients. It is intended for integrations with OpenAI or Azure OpenAI endpoints
+where the backend needs a reusable client for language model calls.
+"""
 
 from openai import AsyncOpenAI
 

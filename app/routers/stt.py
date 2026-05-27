@@ -1,4 +1,9 @@
-# app/routers/stt.py
+"""Speech-to-text API routes.
+
+This module exposes file-based transcription endpoints using ElevenLabs speech to
+text. It validates uploaded audio, applies default language handling, forwards the
+audio to ElevenLabs, and returns the transcription result to the caller.
+"""
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
@@ -27,9 +32,9 @@ async def transcribe(
         description="Audio file to transcribe. Example: mp3, wav, m4a.",
     ),
     language_code: str | None = Form(
-        default="spa",
-        description="ElevenLabs language code. Use 'spa' for Spanish, 'eng' for English, 'cat' for Catalan.",
-        examples=["spa"],
+        default="es",
+        description="ElevenLabs language code. Use 'es' for Spanish, 'en' for English, 'cat' for Catalan.",
+        examples=["es"],
     ),
 ):
     content = await file.read()

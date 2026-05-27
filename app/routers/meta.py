@@ -1,4 +1,9 @@
-# app/routers/meta.py
+"""Runtime metadata routes.
+
+This module exposes application metadata useful for debugging and frontend
+configuration. It reports selected runtime settings such as configured voice,
+agent, model, and provider information without exposing sensitive credentials.
+"""
 
 from fastapi import APIRouter
 
