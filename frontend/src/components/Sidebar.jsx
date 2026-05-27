@@ -1,6 +1,22 @@
 import { FileUpload } from "../features/upload/index.js";
 
-export default function Sidebar({ isOpen, onToggle }) {
+const CONFIG_OPTIONS = {
+  idioma: [
+    { value: "spa", label: "Spanish" },
+    { value: "eng", label: "English" },
+  ],
+  sexo: [
+    { value: "hombre", label: "Male"   },
+    { value: "mujer",  label: "Female" },
+  ],
+  tono: [
+    { value: "cercano",  label: "Friendly"  },
+    { value: "energico", label: "Energetic" },
+    { value: "serio",    label: "Formal"    },
+  ],
+};
+
+export default function Sidebar({ isOpen, onToggle, config, onConfigChange }) {
   return (
     <aside
         className={`h-full w-80 fixed right-0 top-0 z-50 flex flex-col shadow-sm bg-white border-l border-[#c7c4d7] panel-transition ${
@@ -30,27 +46,55 @@ export default function Sidebar({ isOpen, onToggle }) {
           <div className="p-6 space-y-4">
             <h3 className="text-sm font-bold text-[#4f5f76]">Configuration</h3>
             <div className="space-y-4 bg-white p-3 rounded-xl border border-[#c7c4d7]/40">
+
+              {/* Language */}
               <div>
                 <label className="block text-[11px] font-bold text-[#565e74] uppercase mb-1">
-                  Response Tone
+                  Language
                 </label>
-                <select className="w-full bg-white border border-[#c7c4d7] rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#4f5f76]">
-                  <option>Professional &amp; Empathetic</option>
-                  <option>Direct &amp; Technical</option>
-                  <option>Casual &amp; Friendly</option>
+                <select
+                  value={config.idioma}
+                  onChange={(e) => onConfigChange("idioma", e.target.value)}
+                  className="w-full bg-white border border-[#c7c4d7] rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#4f5f76]"
+                >
+                  {CONFIG_OPTIONS.idioma.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </select>
               </div>
+
+              {/* Gender */}
               <div>
                 <label className="block text-[11px] font-bold text-[#565e74] uppercase mb-1">
-                  Knowledge Base Sync
+                  Gender
                 </label>
-                <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-[#c7c4d7]">
-                  <span className="text-sm font-medium text-[#191c1e]">Real-time CRM Access</span>
-                  <div className="w-10 h-5 bg-[#4f5f76] rounded-full relative cursor-pointer shrink-0">
-                    <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow-sm" />
-                  </div>
-                </div>
+                <select
+                  value={config.sexo}
+                  onChange={(e) => onConfigChange("sexo", e.target.value)}
+                  className="w-full bg-white border border-[#c7c4d7] rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#4f5f76]"
+                >
+                  {CONFIG_OPTIONS.sexo.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
               </div>
+
+              {/* Tone */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#565e74] uppercase mb-1">
+                  Tone
+                </label>
+                <select
+                  value={config.tono}
+                  onChange={(e) => onConfigChange("tono", e.target.value)}
+                  className="w-full bg-white border border-[#c7c4d7] rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#4f5f76]"
+                >
+                  {CONFIG_OPTIONS.tono.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
             </div>
           </div>
 

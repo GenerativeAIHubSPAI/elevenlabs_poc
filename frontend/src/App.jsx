@@ -10,6 +10,15 @@ export default function App() {
   const [isTranscriptionView, setIsTranscriptionView] = useState(false);
   const [state, setState]                           = useState("idle");
   const [messages, setMessages]                     = useState([]);
+  const [config, setConfig] = useState({
+    idioma: "spa",
+    sexo:   "hombre",
+    tono:   "cercano",
+  });
+
+  const handleConfigChange = useCallback((key, value) => {
+    setConfig((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const canvasRef = useRef(null);
   const liveBgRef = useRef(null);
@@ -33,7 +42,9 @@ export default function App() {
     onStateChange: setState,
     voiceId:      import.meta.env.VITE_ELEVENLABS_VOICE_ID,
     namespace:    import.meta.env.VITE_KB_NAMESPACE ?? "default",
-    languageCode: import.meta.env.VITE_LANGUAGE_CODE ?? "spa",
+    languageCode: config.idioma,
+    gender:       config.sexo,
+    tone:         config.tono,
   });
 
   useEffect(() => {
@@ -133,7 +144,12 @@ export default function App() {
         </div>
       </main>
 
-      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
+      <Sidebar
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((v) => !v)}
+        config={config}
+        onConfigChange={handleConfigChange}
+      />
     </>
   );
 }

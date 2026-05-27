@@ -33,10 +33,13 @@ import { useRef, useCallback } from "react";
 
 const WS_BASE_URL = "ws://localhost:8000";
 
-function buildStreamingUrl({ voiceId, namespace, languageCode }) {
+function buildStreamingUrl({ voiceId, namespace, languageCode, gender, tone }) {
   const params = new URLSearchParams({ namespace, language_code: languageCode });
-  // voice_id is optional — the server falls back to ELEVENLABS_DEFAULT_VOICE_ID
+  // voice_id is optional — the server falls back to the VOICE_MAP lookup
   if (voiceId) params.set("voice_id", voiceId);
+  // gender and tone let the server pick the right ElevenLabs voice
+  if (gender) params.set("gender", gender);
+  if (tone)   params.set("tone",   tone);
   // The router is mounted at /chat in main.py, so the full path is /chat/voice-stream
   return `${WS_BASE_URL}/chat/voice-stream?${params}`;
 }
@@ -48,6 +51,8 @@ export function useConversationStreaming({
   voiceId,
   namespace     = "default",
   languageCode  = "spa",
+  gender        = "hombre",
+  tone          = "cercano",
 }) {
   const wsRef            = useRef(null);
   const isActiveRef      = useRef(false);
@@ -252,7 +257,7 @@ export function useConversationStreaming({
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     visualizer.start(stream);
 
-    const ws = new WebSocket(buildStreamingUrl({ voiceId, namespace, languageCode }));
+    const ws = new WebSocket(buildStreamingUrl({ voiceId, namespace, languageCode, gender, tone }));
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -274,7 +279,7 @@ export function useConversationStreaming({
       }
     };
   }, [
-    visualizer, voiceId, namespace, languageCode,
+    visualizer, voiceId, namespace, languageCode, gender, tone,
     startCapture, handleServerMessage, onMessage, onStateChange,
   ]);
 
