@@ -1,3 +1,14 @@
+"""PDF text extraction service.
+
+This module extracts readable text from uploaded PDF files using PyMuPDF. It
+processes documents page by page, skips empty or very short pages, and returns
+page-numbered text blocks that can be passed to the knowledge-base ingestion
+pipeline.
+
+This parser handles PDFs with an embedded text layer. Scanned or image-only PDFs
+require OCR, which is intentionally not handled here.
+"""
+
 
 import fitz  # PyMuPDF
 

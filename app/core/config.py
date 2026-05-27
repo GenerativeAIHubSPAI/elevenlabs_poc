@@ -1,3 +1,13 @@
+"""Application configuration.
+
+This module defines the application settings loaded from environment variables.
+It centralizes configuration for ElevenLabs, Azure/OpenAI, Amazon Bedrock,
+knowledge-base behavior, audio settings, and local output paths.
+
+Settings are loaded through Pydantic and cached so the rest of the application can
+reuse a single validated configuration object.
+"""
+
 from functools import lru_cache
 from pathlib import Path
 

@@ -1,4 +1,12 @@
-# app/services/elevenlabs.py
+"""ElevenLabs API service.
+
+This module provides an asynchronous client wrapper for ElevenLabs APIs used by
+the backend. It supports model and voice listing, file-based transcription,
+standard text-to-speech, and streaming text-to-speech.
+
+Provider errors are converted into FastAPI HTTP exceptions so API routes return
+structured error responses instead of generic internal server errors.
+"""
 
 import io
 from collections.abc import AsyncIterator

@@ -1,4 +1,13 @@
-# app/routers/voice.py
+"""Realtime voice WebSocket routes.
+
+This module implements the realtime voice-chat WebSocket pipeline. It receives
+browser audio chunks, forwards them to ElevenLabs realtime speech to text,
+processes committed transcripts with knowledge-base retrieval and LLM generation,
+and streams synthesized assistant audio back to the client.
+
+The route also supports interruption handling by cancelling active assistant
+speech when the frontend sends an interrupt event.
+"""
 
 import asyncio
 import base64

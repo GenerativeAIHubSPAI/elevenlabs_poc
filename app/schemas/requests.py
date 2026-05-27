@@ -1,4 +1,10 @@
-# app/schemas/requests.py
+"""Request and response schemas.
+
+This module defines Pydantic models used by the API routers for validating
+request bodies and shaping structured responses. The schemas cover text-to-speech
+requests, knowledge-base ingestion and search, chat requests, source chunks, and
+chat responses.
+"""
 
 from typing import Any
 
@@ -207,6 +213,8 @@ class ChatRequest(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
+                "user_id": "user_123",
+                "session_id": "demo-session-001",
                 "question": "¿Qué me puedes decir de los gachapones de GachaBarna?",
                 "namespace": "default",
                 "top_k": 7,

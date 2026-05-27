@@ -1,18 +1,23 @@
-# app/routers/chat.py
+"""Chat API routes.
+
+This module exposes the chat endpoint used to answer user questions with
+knowledge-base context and conversation memory. It retrieves relevant chunks,
+builds session-aware context, calls the LLM service, stores the conversation
+turns, and returns the assistant answer with source metadata.
+"""
 
 from fastapi import APIRouter
 
 from app.schemas.requests import ChatRequest, ChatResponse, SourceChunk
 from app.services.kb import kb_search
 from app.services.llm import llm_client
-from app.services.memory import add_turn, create_session_id, format_history
+from app.services.memory import add_turn, format_history
 
 router = APIRouter()
 
 
 @router.post("/ask", response_model=ChatResponse)
 async def ask(body: ChatRequest):
-    session_id = body.session_id
     conversation_key = f"{body.user_id}:{body.session_id}"
 
     conversation_history = format_history(
@@ -38,6 +43,7 @@ async def ask(body: ChatRequest):
             "title": m["title"],
             "text": m["text"],
             "score": m["score"],
+            "source_name": m.get("source_name"),
             "page": m.get("page"),
         }
         for m in matches

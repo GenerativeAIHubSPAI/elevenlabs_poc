@@ -1,4 +1,10 @@
-# app/routers/tts.py
+"""Text-to-speech API routes.
+
+This module exposes speech synthesis endpoints using ElevenLabs text to speech.
+It supports both full audio responses and streamed audio responses, resolving
+default voices and model settings from application configuration when they are
+not provided by the caller.
+"""
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse

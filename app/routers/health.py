@@ -1,4 +1,9 @@
-# app/routers/health.py
+"""Health and metadata routes.
+
+This module exposes lightweight endpoints for checking backend availability and
+inspecting external ElevenLabs resources such as available models and voices.
+These routes are mainly used for operational checks and development validation.
+"""
 
 from fastapi import APIRouter
 

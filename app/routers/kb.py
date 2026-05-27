@@ -1,4 +1,10 @@
-# app/routers/kb.py
+"""Knowledge-base API routes.
+
+This module exposes endpoints for ingesting text and PDF documents into the
+knowledge base and for searching stored chunks by namespace. It validates uploads,
+extracts PDF text, delegates chunk creation and embedding to the knowledge-base
+service, and returns ingestion/search results for downstream chat and voice flows.
+"""
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
