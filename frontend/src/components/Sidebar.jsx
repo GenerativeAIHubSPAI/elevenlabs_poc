@@ -2,8 +2,8 @@ import { FileUpload } from "../features/upload/index.js";
 
 const CONFIG_OPTIONS = {
   idioma: [
-    { value: "spa", label: "Spanish" },
-    { value: "eng", label: "English" },
+    { value: "es", label: "Spanish" },
+    { value: "en", label: "English" },
   ],
   sexo: [
     { value: "hombre", label: "Male"   },

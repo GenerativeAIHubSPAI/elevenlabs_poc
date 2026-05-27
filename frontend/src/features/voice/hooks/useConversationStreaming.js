@@ -63,7 +63,7 @@ export function useConversationStreaming({
   onStateChange,
   voiceId,
   namespace = "default",
-  languageCode = "spa",
+  languageCode = "es",
   gender = "hombre",
   tone = "cercano",
 }) {

@@ -12,7 +12,7 @@ export default function App() {
   const [messages, setMessages]                     = useState([]);
   const [muted, setMuted]                           = useState(false);
   const [config, setConfig] = useState({
-    idioma: "spa",
+    idioma: "es",
     sexo:   "hombre",
     tono:   "cercano",
   });
