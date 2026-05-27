@@ -1,10 +1,15 @@
 # app/services/memory.py
 
+import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
 conversation_store: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+
+def create_session_id() -> str:
+    return str(uuid.uuid4())
 
 
 def add_turn(
