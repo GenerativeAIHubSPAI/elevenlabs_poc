@@ -22,21 +22,19 @@ eleven = ElevenLabsClient()
 # Key: (language_code, gender, tone)  → ElevenLabs voice_id
 VOICE_MAP: dict[tuple[str, str, str], str] = {
     # ── Spanish ────────────────────────────────────────────────────────────────
-    # TODO: replace with dedicated Spanish voices once added to the account
-    ("spa", "hombre", "energico"): "IKne3meq5aSn9XLyUdCD",  # Charlie - Deep, Energetic
-    ("spa", "hombre", "cercano"):  "CwhRBWXzGAHq8TQ4Fs17",  # Roger   - Laid-Back, Casual
-    ("spa", "hombre", "serio"):    "onwK4e9ZLuTAKqWW03F9",  # Daniel  - Steady Broadcaster
-    ("spa", "mujer",  "energico"): "fQ74DTbwd8TiAJFxu9v8",  # Kimber  - Happy, Energetic
-    ("spa", "mujer",  "cercano"):  "cgSgspJ2msm6clMCkdW9",  # Jessica - Playful, Warm
-    ("spa", "mujer",  "serio"):    "XrExE9yKIg1WjnnlVkGX",  # Matilda - Professional
+    ("spa", "hombre", "energico"): "eEyWolF7iBpMA65GbtAm",
+    ("spa", "hombre", "cercano"):  "w8u1dIxiWVelUtUQg1MB",
+    ("spa", "hombre", "serio"):    "m8dLaNJTf2Faapk51VKn",
+    ("spa", "mujer",  "energico"): "uQw4jpKzMLrZuo0RLPS9",
+    ("spa", "mujer",  "cercano"):  "1eHrpOW5l98cxiSRjbzJ",
+    ("spa", "mujer",  "serio"):    "kwNLkNjbQHMw9YUFZsHI",
     # ── English ────────────────────────────────────────────────────────────────
-    # TODO: replace with dedicated English voices once added to the account
-    ("eng", "hombre", "energico"): "IKne3meq5aSn9XLyUdCD",  # Charlie - Deep, Energetic
-    ("eng", "hombre", "cercano"):  "CwhRBWXzGAHq8TQ4Fs17",  # Roger   - Laid-Back, Casual
-    ("eng", "hombre", "serio"):    "onwK4e9ZLuTAKqWW03F9",  # Daniel  - Steady Broadcaster
-    ("eng", "mujer",  "energico"): "fQ74DTbwd8TiAJFxu9v8",  # Kimber  - Happy, Energetic
-    ("eng", "mujer",  "cercano"):  "cgSgspJ2msm6clMCkdW9",  # Jessica - Playful, Warm
-    ("eng", "mujer",  "serio"):    "XrExE9yKIg1WjnnlVkGX",  # Matilda - Professional
+    ("eng", "hombre", "energico"): "s0XGIcqmceN2l7kjsqoZ",
+    ("eng", "hombre", "cercano"):  "TWutjvRaJqAX89preB4e",
+    ("eng", "hombre", "serio"):    "xKhbyU7E3bC6T89Kn26c",
+    ("eng", "mujer",  "energico"): "8vf2Pg7VZD0Piv8GA8v9",
+    ("eng", "mujer",  "cercano"):  "2vbhUP8zyKg4dEZaTWGn",
+    ("eng", "mujer",  "serio"):    "gJx1vCzNCD1EQHT212Ls",
 }
 
 
