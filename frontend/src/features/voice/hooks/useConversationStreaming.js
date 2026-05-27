@@ -33,13 +33,26 @@ import { useRef, useCallback } from "react";
 
 const WS_BASE_URL = "ws://localhost:8000";
 
-function buildStreamingUrl({ voiceId, namespace, languageCode, gender, tone }) {
-  const params = new URLSearchParams({ namespace, language_code: languageCode });
+function buildStreamingUrl({
+  voiceId,
+  namespace,
+  languageCode,
+  gender,
+  tone,
+  userId,
+  sessionId,
+}) {
+  const params = new URLSearchParams({
+    namespace,
+    language_code: languageCode,
+    user_id: userId,
+    session_id: sessionId,
+  });
   // voice_id is optional — the server falls back to the VOICE_MAP lookup
   if (voiceId) params.set("voice_id", voiceId);
   // gender and tone let the server pick the right ElevenLabs voice
   if (gender) params.set("gender", gender);
-  if (tone)   params.set("tone",   tone);
+  if (tone) params.set("tone", tone);
   // The router is mounted at /chat in main.py, so the full path is /chat/voice-stream
   return `${WS_BASE_URL}/chat/voice-stream?${params}`;
 }
@@ -49,34 +62,36 @@ export function useConversationStreaming({
   onMessage,
   onStateChange,
   voiceId,
-  namespace     = "default",
-  languageCode  = "spa",
-  gender        = "hombre",
-  tone          = "cercano",
+  namespace = "default",
+  languageCode = "spa",
+  gender = "hombre",
+  tone = "cercano",
 }) {
-  const wsRef            = useRef(null);
-  const isActiveRef      = useRef(false);
-  const isReplyingRef    = useRef(false);
+  const wsRef = useRef(null);
+  const isActiveRef = useRef(false);
+  const isReplyingRef = useRef(false);
 
   // Capture pipeline (16 kHz AudioContext + ScriptProcessor)
-  const captureCtxRef    = useRef(null);
-  const processorRef     = useRef(null);
+  const captureCtxRef = useRef(null);
+  const processorRef = useRef(null);
 
   // Playback pipeline
-  const playbackCtxRef   = useRef(null);
-  const currentSrcRef    = useRef(null); // AudioBufferSourceNode in flight
-  const audioChunksRef   = useRef([]);   // accumulates Uint8Array MP3 chunks
+  const playbackCtxRef = useRef(null);
+  const currentSrcRef = useRef(null); // AudioBufferSourceNode in flight
+  const audioChunksRef = useRef([]); // accumulates Uint8Array MP3 chunks
 
   // ─── Playback helpers ────────────────────────────────────────────────────
 
   const stopPlayback = useCallback(() => {
     if (currentSrcRef.current) {
-      try { currentSrcRef.current.stop(); } catch (_) {}
+      try {
+        currentSrcRef.current.stop();
+      } catch (_) {}
       currentSrcRef.current = null;
     }
     visualizer.detachReplySource();
     audioChunksRef.current = [];
-    isReplyingRef.current  = false;
+    isReplyingRef.current = false;
   }, [visualizer]);
 
   const playAccumulatedChunks = useCallback(async () => {
@@ -92,9 +107,12 @@ export function useConversationStreaming({
 
     // Concatenate all binary chunks into a single ArrayBuffer
     const totalBytes = chunks.reduce((n, c) => n + c.byteLength, 0);
-    const combined   = new Uint8Array(totalBytes);
+    const combined = new Uint8Array(totalBytes);
     let offset = 0;
-    for (const chunk of chunks) { combined.set(chunk, offset); offset += chunk.byteLength; }
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
 
     // Decode the MP3 and play it back through Web Audio
     const actx = new AudioContext();
@@ -109,8 +127,8 @@ export function useConversationStreaming({
       return;
     }
 
-    const src    = actx.createBufferSource();
-    src.buffer   = audioBuffer;
+    const src = actx.createBufferSource();
+    src.buffer = audioBuffer;
     visualizer.attachReplySource(actx, src);
     src.connect(actx.destination);
     currentSrcRef.current = src;
@@ -127,71 +145,74 @@ export function useConversationStreaming({
 
   // ─── Incoming WebSocket messages ─────────────────────────────────────────
 
-  const handleServerMessage = useCallback(async (msg) => {
-    switch (msg.type) {
+  const handleServerMessage = useCallback(
+    async (msg) => {
+      switch (msg.type) {
+        case "stt_session_started":
+          // ElevenLabs STT handshake complete — audio is flowing and VAD is active
+          onStateChange("active");
+          break;
 
-      case "stt_session_started":
-        // ElevenLabs STT handshake complete — audio is flowing and VAD is active
-        onStateChange("active");
-        break;
+        case "user_partial_transcript":
+          // Fires continuously while the user is speaking (updates fast)
+          // Uncomment to display live "ghost" text in the chat UI:
+          // onMessage("user_partial", msg.text);
+          break;
 
-      case "user_partial_transcript":
-        // Fires continuously while the user is speaking (updates fast)
-        // Uncomment to display live "ghost" text in the chat UI:
-        // onMessage("user_partial", msg.text);
-        break;
+        case "user_committed_transcript":
+          // Server-side VAD detected end-of-utterance → transcript is final
+          onMessage("user", msg.text);
+          onStateChange("processing");
+          break;
 
-      case "user_committed_transcript":
-        // Server-side VAD detected end-of-utterance → transcript is final
-        onMessage("user", msg.text);
-        onStateChange("processing");
-        break;
+        case "sources":
+          // Knowledge base chunks used to answer — available for display if needed
+          // msg.sources: Array<{ chunk_id, title, text, score }>
+          break;
 
-      case "sources":
-        // Knowledge base chunks used to answer — available for display if needed
-        // msg.sources: Array<{ chunk_id, title, text, score }>
-        break;
+        case "assistant_text":
+          // LLM answer text arrives before TTS chunks
+          onMessage("assistant", msg.text);
+          onStateChange("replying");
+          isReplyingRef.current = true;
+          audioChunksRef.current = []; // reset buffer before accumulating new reply
+          break;
 
-      case "assistant_text":
-        // LLM answer text arrives before TTS chunks
-        onMessage("assistant", msg.text);
-        onStateChange("replying");
-        isReplyingRef.current  = true;
-        audioChunksRef.current = []; // reset buffer before accumulating new reply
-        break;
+        case "assistant_audio_chunk": {
+          // One MP3 chunk — decode base64 to binary and accumulate
+          const binary = atob(msg.audio_base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++)
+            bytes[i] = binary.charCodeAt(i);
+          audioChunksRef.current.push(bytes);
+          break;
+        }
 
-      case "assistant_audio_chunk": {
-        // One MP3 chunk — decode base64 to binary and accumulate
-        const binary = atob(msg.audio_base64);
-        const bytes  = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        audioChunksRef.current.push(bytes);
-        break;
+        case "assistant_audio_done":
+          // All TTS chunks received — concatenate, decode MP3, and play
+          await playAccumulatedChunks();
+          break;
+
+        case "assistant_interrupted":
+          // Server cancelled TTS mid-stream (barge-in from the user)
+          stopPlayback();
+          if (isActiveRef.current) onStateChange("active");
+          break;
+
+        case "stt_error":
+          onMessage("error", `STT error: ${JSON.stringify(msg.event)}`);
+          break;
+
+        case "error":
+          onMessage("error", msg.message ?? "Unknown server error");
+          break;
+
+        default:
+          break;
       }
-
-      case "assistant_audio_done":
-        // All TTS chunks received — concatenate, decode MP3, and play
-        await playAccumulatedChunks();
-        break;
-
-      case "assistant_interrupted":
-        // Server cancelled TTS mid-stream (barge-in from the user)
-        stopPlayback();
-        if (isActiveRef.current) onStateChange("active");
-        break;
-
-      case "stt_error":
-        onMessage("error", `STT error: ${JSON.stringify(msg.event)}`);
-        break;
-
-      case "error":
-        onMessage("error", msg.message ?? "Unknown server error");
-        break;
-
-      default:
-        break;
-    }
-  }, [onMessage, onStateChange, playAccumulatedChunks, stopPlayback]);
+    },
+    [onMessage, onStateChange, playAccumulatedChunks, stopPlayback],
+  );
 
   // ─── Mic capture → WebSocket ─────────────────────────────────────────────
 
@@ -202,7 +223,7 @@ export function useConversationStreaming({
     const ctx = new AudioContext({ sampleRate: 16000 });
     captureCtxRef.current = ctx;
 
-    const source    = ctx.createMediaStreamSource(stream);
+    const source = ctx.createMediaStreamSource(stream);
 
     // ScriptProcessor (deprecated but universally supported).
     // Buffer size must be a power of 2. 2048 @ 16 kHz = 128 ms per callback.
@@ -215,20 +236,23 @@ export function useConversationStreaming({
 
       // Convert Float32 [-1, 1] samples to signed Int16 PCM
       const float32 = e.inputBuffer.getChannelData(0);
-      const int16   = new Int16Array(float32.length);
+      const int16 = new Int16Array(float32.length);
       for (let i = 0; i < float32.length; i++) {
         int16[i] = Math.max(-1, Math.min(1, float32[i])) * 0x7fff;
       }
 
       // Base64-encode the raw PCM bytes
       const bytes = new Uint8Array(int16.buffer);
-      let binary  = "";
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++)
+        binary += String.fromCharCode(bytes[i]);
 
-      wsRef.current.send(JSON.stringify({
-        type:         "audio_chunk",
-        audio_base64: btoa(binary),
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          type: "audio_chunk",
+          audio_base64: btoa(binary),
+        }),
+      );
     };
 
     // ScriptProcessor requires a path to destination to fire onaudioprocess.
@@ -255,9 +279,21 @@ export function useConversationStreaming({
 
   const start = useCallback(async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const userId = "test"; // fixed for now — should come from auth later
+    const sessionId = crypto.randomUUID(); // new UUID on every conversation start
     visualizer.start(stream);
 
-    const ws = new WebSocket(buildStreamingUrl({ voiceId, namespace, languageCode, gender, tone }));
+    const ws = new WebSocket(
+      buildStreamingUrl({
+        voiceId,
+        namespace,
+        languageCode,
+        gender,
+        tone,
+        userId,
+        sessionId,
+      }),
+    );
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -279,8 +315,16 @@ export function useConversationStreaming({
       }
     };
   }, [
-    visualizer, voiceId, namespace, languageCode, gender, tone,
-    startCapture, handleServerMessage, onMessage, onStateChange,
+    visualizer,
+    voiceId,
+    namespace,
+    languageCode,
+    gender,
+    tone,
+    startCapture,
+    handleServerMessage,
+    onMessage,
+    onStateChange,
   ]);
 
   const stop = useCallback(() => {
@@ -317,7 +361,7 @@ export function useConversationStreaming({
   }, [stopPlayback]);
 
   const isRunning = useCallback(() => isActiveRef.current, []);
-  const isBusy    = useCallback(() => isReplyingRef.current, []);
+  const isBusy = useCallback(() => isReplyingRef.current, []);
 
   return { start, stop, interrupt, isRunning, isBusy };
 }
