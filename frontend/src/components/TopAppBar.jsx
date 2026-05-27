@@ -12,6 +12,11 @@ const HELP_STEPS = [
     desc: "No need to hold anything down. When you stop talking, the assistant will process your message.",
   },
   {
+    icon: "mic_off",
+    title: "Mute the microphone",
+    desc: "Press the microphone button to mute yourself without ending the call — useful if you need to talk to someone else.",
+  },
+  {
     icon: "call_end",
     title: "End the call",
     desc: "Use the red button to finish the session at any time.",
@@ -23,8 +28,8 @@ const HELP_STEPS = [
   },
   {
     icon: "settings",
-    title: "Settings",
-    desc: "Open the side panel with the settings icon to change the voice configuration and upload context documents.",
+    title: "Configure the assistant's voice",
+    desc: "Open the side panel to choose the language (Spanish / English), gender (Male / Female) and tone (Friendly / Energetic / Formal) of the assistant. Changes apply on the next conversation.",
   },
 ];
 
