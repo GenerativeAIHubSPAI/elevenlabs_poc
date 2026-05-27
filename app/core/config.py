@@ -39,6 +39,13 @@ class Settings(BaseSettings):
 
     BEDROCK_EMBEDDING_MODEL_ID: str = "amazon.titan-embed-text-v2:0"
     BEDROCK_EMBEDDING_DIMENSIONS: int = 1024
+
+    # LLM - Azure/OpenAI Responses API
+    LLM_API_KEY: str | None = None
+    LLM_BASE_URL: str = "https://spai-default-foundry.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview"
+    LLM_MODEL: str = "gpt-5.4-mini"
+    LLM_MAX_OUTPUT_TOKENS: int = 700
+    LLM_TEMPERATURE: float = 0.2
     
     # Application
     OUTPUT_DIR: str = "../output/"
