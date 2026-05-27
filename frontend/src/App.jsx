@@ -61,12 +61,15 @@ export default function App() {
   }, [isTranscriptionView, visualizer]);
 
   const handleToggle = useCallback(async () => {
-    if (conversation.isBusy()) return;
     if (!conversation.isRunning()) {
+      // No iniciar si el hook está en un estado transitorio inconsistente
+      if (conversation.isBusy()) return;
       setMessages([]); // nueva sesión → limpiar el historial anterior
       try { await conversation.start(); }
       catch (e) { setState("idle"); }
     } else {
+      // Colgar siempre está permitido, incluso mientras el asistente habla.
+      // stop() ya llama a stopPlayback() internamente.
       conversation.stop();
     }
   }, [conversation]);

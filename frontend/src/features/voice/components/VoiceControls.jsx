@@ -47,9 +47,9 @@ export default function VoiceControls({ state, onClick, lightBg = false }) {
         </button>
       </div>
 
-      {/* End call — invisible when idle */}
+      {/* End call — visible e interactivo siempre que no esté idle */}
       <button
-        onClick={!IS_IDLE(state) && !IS_BUSY(state) ? onClick : undefined}
+        onClick={!IS_IDLE(state) ? onClick : undefined}
         className={`w-14 h-14 rounded-full bg-red-600 text-white hover:brightness-110 shadow-lg transition-all flex items-center justify-center ${
           IS_IDLE(state) ? "invisible" : ""
         }`}
