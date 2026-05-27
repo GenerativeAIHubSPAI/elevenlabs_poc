@@ -30,17 +30,17 @@ export default function FileUpload({ namespace = "default" }) {
     const ext = file.name.split(".").pop().toLowerCase();
     if (!ACCEPTED_SET.has(ext)) {
       setStatus("error");
-      setMessage(`Tipo no soportado (.${ext}). Solo se aceptan ficheros PDF.`);
+      setMessage(`Unsupported type (.${ext}). Only PDF files are accepted.`);
       return;
     }
 
     setStatus("uploading");
-    setMessage(`Subiendo ${file.name}…`);
+    setMessage(`Uploading ${file.name}...`);
 
     try {
       const result = await uploadFile(file, namespace);
       setStatus("success");
-      setMessage(`${result.ingested_chunks} fragmentos indexados de "${result.source_name}" (${result.pages_processed} páginas)`);
+      setMessage(`${result.ingested_chunks} chunks indexed from "${result.source_name}" (${result.pages_processed} pages)`);
     } catch (e) {
       setStatus("error");
       setMessage(e.message);
@@ -108,14 +108,14 @@ export default function FileUpload({ namespace = "default" }) {
       {status === "idle" && (
         <>
           <p className="text-sm font-bold text-[#191c1e] mb-1">
-            {isDragging ? "Suelta el fichero aquí" : "Arrastra o selecciona un fichero"}
+            {isDragging ? "Drop the file here" : "Drag & drop or select a file"}
           </p>
-          <p className="text-[11px] text-[#565e74] mb-4">PDF · máx. 20 MB</p>
+          <p className="text-[11px] text-[#565e74] mb-4">PDF · max. 20 MB</p>
           <button
             onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
             className="px-6 py-2 bg-[#eceef0] text-[#565e74] hover:bg-[#4f5f76] hover:text-white rounded-lg text-sm font-bold transition-all"
           >
-            Seleccionar fichero
+            Select file
           </button>
         </>
       )}
@@ -127,14 +127,14 @@ export default function FileUpload({ namespace = "default" }) {
       {(status === "success" || status === "error") && (
         <>
           <p className={`text-sm font-bold mb-1 ${status === "success" ? "text-green-700" : "text-red-700"}`}>
-            {status === "success" ? "Subida completada" : "Error al subir"}
+            {status === "success" ? "Upload complete" : "Upload failed"}
           </p>
           <p className="text-[11px] text-[#565e74] mb-4 px-2">{message}</p>
           <button
             onClick={(e) => { e.stopPropagation(); reset(); }}
             className="px-6 py-2 bg-[#eceef0] text-[#565e74] hover:bg-[#4f5f76] hover:text-white rounded-lg text-sm font-bold transition-all"
           >
-            Subir otro
+            Upload another
           </button>
         </>
       )}

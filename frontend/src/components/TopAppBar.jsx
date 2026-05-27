@@ -3,28 +3,28 @@ import { useState } from "react";
 const HELP_STEPS = [
   {
     icon: "keyboard_voice",
-    title: "Iniciar conversación",
-    desc: "Pulsa el botón central para comenzar. El sistema detectará tu voz automáticamente.",
+    title: "Start a conversation",
+    desc: "Press the central button to begin. The system will detect your voice automatically.",
   },
   {
     icon: "hearing",
-    title: "Habla con naturalidad",
-    desc: "No hace falta mantener pulsado nada. Cuando dejes de hablar, el asistente procesará tu mensaje.",
+    title: "Speak naturally",
+    desc: "No need to hold anything down. When you stop talking, the assistant will process your message.",
   },
   {
     icon: "call_end",
-    title: "Finalizar llamada",
-    desc: "Usa el botón rojo para terminar la sesión en cualquier momento.",
+    title: "End the call",
+    desc: "Use the red button to finish the session at any time.",
   },
   {
     icon: "notes",
-    title: "Ver transcripción",
-    desc: "Pulsa el botón superior derecho del panel para alternar entre el visualizador y el historial de mensajes.",
+    title: "View transcript",
+    desc: "Press the top-right button on the panel to toggle between the visualizer and the message history.",
   },
   {
     icon: "settings",
-    title: "Configuración",
-    desc: "Abre el panel lateral con el icono de ajustes para cambiar el tono de respuesta y subir documentos de contexto.",
+    title: "Settings",
+    desc: "Open the side panel with the settings icon to change the voice configuration and upload context documents.",
   },
 ];
 
@@ -85,7 +85,7 @@ export default function TopAppBar({ sidebarOpen, onToggleSidebar }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-[#191c1e]">Cómo usar VoiceCopilot AI</h2>
+              <h2 className="text-lg font-bold text-[#191c1e]">How to use VoiceCopilot AI</h2>
               <button
                 onClick={() => setHelpOpen(false)}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-[#565e74] hover:bg-[#f2f4f6] transition-colors"
@@ -117,7 +117,7 @@ export default function TopAppBar({ sidebarOpen, onToggleSidebar }) {
               onClick={() => setHelpOpen(false)}
               className="w-full py-2.5 bg-[#4f5f76] text-white font-bold rounded-xl hover:brightness-110 transition-all active:scale-95"
             >
-              Entendido
+              Got it
             </button>
           </div>
         </div>
