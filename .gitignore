@@ -181,5 +181,9 @@ cython_debug/
 agents/tools_old.py
 
 .vscode
-
 .test_scripts
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend_old/

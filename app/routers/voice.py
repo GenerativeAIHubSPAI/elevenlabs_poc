@@ -27,6 +27,49 @@ router = APIRouter()
 settings = get_settings()
 eleven = ElevenLabsClient()
 
+# ─── Voice ID matrix ──────────────────────────────────────────────────────────
+# Key: (language_code, gender, tone)  → ElevenLabs voice_id
+VOICE_MAP: dict[tuple[str, str, str], str] = {
+    # ── Spanish ────────────────────────────────────────────────────────────────
+    ("es", "hombre", "energico"): "eEyWolF7iBpMA65GbtAm",
+    ("es", "hombre", "cercano"):  "w8u1dIxiWVelUtUQg1MB",
+    ("es", "hombre", "serio"):    "m8dLaNJTf2Faapk51VKn",
+    ("es", "mujer",  "energico"): "uQw4jpKzMLrZuo0RLPS9",
+    ("es", "mujer",  "cercano"):  "1eHrpOW5l98cxiSRjbzJ",
+    ("es", "mujer",  "serio"):    "kwNLkNjbQHMw9YUFZsHI",
+    # ── English ────────────────────────────────────────────────────────────────
+    ("en", "hombre", "energico"): "s0XGIcqmceN2l7kjsqoZ",
+    ("en", "hombre", "cercano"):  "TWutjvRaJqAX89preB4e",
+    ("en", "hombre", "serio"):    "xKhbyU7E3bC6T89Kn26c",
+    ("en", "mujer",  "energico"): "8vf2Pg7VZD0Piv8GA8v9",
+    ("en", "mujer",  "cercano"):  "2vbhUP8zyKg4dEZaTWGn",
+    ("en", "mujer",  "serio"):    "gJx1vCzNCD1EQHT212Ls",
+}
+
+
+def _resolve_voice_id(
+    explicit_voice_id: str | None,
+    language_code: str | None,
+    gender: str | None,
+    tone: str | None,
+) -> str | None:
+    """
+    Return the voice_id to use, in priority order:
+    1. An explicit ?voice_id= query param (overrides everything).
+    2. The VOICE_MAP lookup from language_code + gender + tone.
+    3. The settings fallbacks (ELEVENLABS_DEFAULT_VOICE_ID / ELEVENLABS_VOICE_ID).
+    """
+    if explicit_voice_id:
+        return explicit_voice_id
+
+    if language_code and gender and tone:
+        key = (language_code.lower(), gender.lower(), tone.lower())
+        mapped = VOICE_MAP.get(key)
+        if mapped:
+            return mapped
+
+    return settings.ELEVENLABS_DEFAULT_VOICE_ID or settings.ELEVENLABS_VOICE_ID
+
 
 def _build_realtime_stt_url(language_code: str | None = None) -> str:
     query = {
@@ -94,17 +137,34 @@ async def _send_answer_audio(
             )
         raise
 
+    except Exception as exc:
+        # Catch TTS errors (e.g. voice_not_found 404) and forward them to the
+        # client over the WebSocket so the error is visible instead of only
+        # appearing as an unhandled task exception in the server logs.
+        with contextlib.suppress(Exception):
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "turn_id": turn_id,
+                    "message": f"TTS error: {exc}",
+                }
+            )
+
 @router.websocket("/voice-stream")
 async def voice_stream(websocket: WebSocket):
     await websocket.accept()
 
-    voice_id = (
-        websocket.query_params.get("voice_id")
-        or settings.ELEVENLABS_DEFAULT_VOICE_ID
-        or settings.ELEVENLABS_VOICE_ID
-    )
-    namespace = websocket.query_params.get("namespace") or settings.KB_DEFAULT_NAMESPACE
     language_code = websocket.query_params.get("language_code")
+    gender        = websocket.query_params.get("gender")
+    tone          = websocket.query_params.get("tone")
+    namespace     = websocket.query_params.get("namespace") or settings.KB_DEFAULT_NAMESPACE
+
+    voice_id = _resolve_voice_id(
+        explicit_voice_id=websocket.query_params.get("voice_id"),
+        language_code=language_code,
+        gender=gender,
+        tone=tone,
+    )
 
     if not voice_id:
         await websocket.send_json(
@@ -186,7 +246,11 @@ async def voice_stream(websocket: WebSocket):
             async def elevenlabs_to_browser():
                 nonlocal current_tts_task, current_turn_id
                 while True:
-                    raw = await stt_ws.recv()
+                    try:
+                        raw = await stt_ws.recv()
+                    except websockets.exceptions.ConnectionClosed:
+                        # ElevenLabs closed the STT socket cleanly — nothing to do
+                        return
                     event = json.loads(raw)
                     message_type = event.get("message_type")
 
@@ -292,10 +356,11 @@ async def voice_stream(websocket: WebSocket):
         if current_tts_task and not current_tts_task.done():
             current_tts_task.cancel()
 
-        await websocket.send_json(
-            {
-                "type": "error",
-                "message": str(exc),
-            }
-        )
-        await websocket.close()
+        with contextlib.suppress(Exception):
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "message": str(exc),
+                }
+            )
+            await websocket.close()

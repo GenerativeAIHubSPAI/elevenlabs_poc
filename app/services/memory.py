@@ -1,3 +1,5 @@
+# app/services/memory.py
+
 """In-memory conversation memory service.
 
 This module stores short-term conversation history for active user sessions. It
@@ -11,8 +13,13 @@ session ID. The storage is temporary and resets when the server restarts.
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
+import uuid
 
 conversation_store: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+
+def create_session_id() -> str:
+    return str(uuid.uuid4())
 
 
 def add_turn(
