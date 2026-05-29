@@ -1,0 +1,36 @@
+version: 0.2
+
+env:
+  variables:
+    FRONTEND_DIR: frontend
+    BUILD_DIR: dist
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - echo Installing frontend dependencies...
+      - cd $FRONTEND_DIR
+      - npm ci
+
+  build:
+    commands:
+      - echo Building frontend...
+      - npm run build
+
+  post_build:
+    commands:
+      - echo Deploying frontend to S3...
+      - aws s3 sync $BUILD_DIR s3://$FRONTEND_BUCKET_NAME --delete
+      - |
+        if [ -n "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
+          aws cloudfront create-invalidation \
+            --distribution-id $CLOUDFRONT_DISTRIBUTION_ID \
+            --paths "/*"
+        fi
+
+artifacts:
+  base-directory: frontend/dist
+  files:
+    - "**/*"
