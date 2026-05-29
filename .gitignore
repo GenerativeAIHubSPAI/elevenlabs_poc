@@ -187,3 +187,68 @@ agents/tools_old.py
 frontend/node_modules/
 frontend/dist/
 frontend_old/
+
+
+# Local secrets / environment variants
+.env.*
+!.env.example
+
+# Local/generated app data
+output/
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Audio test/generated files
+*.pcm
+*.mp3
+*.wav
+*.m4a
+*.ogg
+
+# Large local wheels / binary artifacts
+*.whl
+
+# AWS / deployment local artifacts
+.aws-sam/
+cdk.out/
+imagedefinitions.json
+
+# Docker local override files
+docker-compose.override.yml
+
+# OS files
+.DS_Store
+Thumbs.db# Local secrets / environment variants
+.env.*
+!.env.example
+
+# Local/generated app data
+output/
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Audio test/generated files
+*.pcm
+*.mp3
+*.wav
+*.m4a
+*.ogg
+
+# Large local wheels / binary artifacts
+*.whl
+
+# AWS / deployment local artifacts
+.aws-sam/
+cdk.out/
+imagedefinitions.json
+
+# Docker local override files
+docker-compose.override.yml
+
+# OS files
+.DS_Store
+Thumbs.db
