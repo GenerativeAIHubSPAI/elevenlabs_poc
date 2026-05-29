@@ -13,7 +13,7 @@ jobs:
     env:
       AWS_REGION: eu-west-3
       ECR_REPOSITORY: voice-assistant
-      ECS_SERVICE: voice-assistant-service-sl544gs6
+      ECS_SERVICE: aiademo-voice-assistant-service
       ECS_CLUSTER: aiademo-cluster
       TASK_DEFINITION_NAME: voice-assistant
       CONTAINER_NAME: voice-assistant
