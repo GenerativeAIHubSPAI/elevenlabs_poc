@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     ELEVENLABS_STT_SAMPLE_RATE: int = 16000
 
     # Bedrock
-    AWS_REGION: str = "eu-west-1"
+    AWS_REGION: str = "eu-west-3"
     AWS_BEARER_TOKEN_BEDROCK: str | None = None
     BEDROCK_MODEL_ID: str = "amazon.nova-pro-v1:0"
     BEDROCK_MAX_TOKENS: int = 700
@@ -52,8 +52,8 @@ class Settings(BaseSettings):
 
     # LLM - Azure/OpenAI Responses API
     LLM_API_KEY: str | None = None
-    LLM_BASE_URL: str = "https://spai-default-foundry.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview"
-    LLM_MODEL: str = "gpt-5.4-mini"
+    LLM_BASE_URL: str = "https://api.openai.com/v1/responses"
+    LLM_MODEL: str = "gpt-4.1-mini"
     LLM_MAX_OUTPUT_TOKENS: int = 700
     LLM_TEMPERATURE: float = 0.2
     
