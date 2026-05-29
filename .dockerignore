@@ -1,6 +1,4 @@
 venv/
-frontend/
-frontend_old/
 __pycache__/
 *.py[cod]
 *.whl

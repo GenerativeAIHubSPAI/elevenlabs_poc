@@ -1,6 +1,5 @@
-const BASE_URL = "http://localhost:8000";
-const VOICE_TURN_URL = `${BASE_URL}/voice/turn`;
-const KB_INGEST_FILE_URL = `${BASE_URL}/kb/ingest-pdf`;
+const VOICE_TURN_URL = "/voice/turn";
+const KB_INGEST_FILE_URL = "/kb/ingest-pdf";
 
 function encodeWav(samples, sr) {
   const buf = new ArrayBuffer(44 + samples.length * 2);
