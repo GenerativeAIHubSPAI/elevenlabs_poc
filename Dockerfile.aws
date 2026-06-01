@@ -62,14 +62,19 @@ server {
         add_header Access-Control-Expose-Headers "X-Transcript, X-Reply-Text" always;
     }
 
+    # SPA under the prefix → strip prefix → serve files from root
     location ${APP_PREFIX}/ {
-        alias /var/www/html/;
+        rewrite ^${APP_PREFIX}/(.*)$ /$1 break;
+        root /var/www/html;
         index index.html;
-        try_files $uri $uri/ ${APP_PREFIX}/index.html;
+        try_files $uri $uri/ /index.html;
     }
 
+    # Everything else (incl. ALB health check on / or /health) → SPA, always 200
     location / {
-        return 301 ${APP_PREFIX}/;
+        root /var/www/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
     }
 }
 EOF
