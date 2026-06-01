@@ -1,4 +1,4 @@
-const API_PREFIX = import.meta.env.VITE_API_PREFIX ?? "";
+const API_PREFIX = (import.meta.env.VITE_API_PREFIX ?? "").replace(/\/+$/, "");
 const VOICE_TURN_URL = `${API_PREFIX}/voice/turn`;
 const KB_INGEST_FILE_URL = `${API_PREFIX}/kb/ingest-pdf`;
 

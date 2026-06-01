@@ -17,6 +17,9 @@ jobs:
       ECS_CLUSTER: aiademo-cluster
       TASK_DEFINITION_NAME: voice-assistant
       CONTAINER_NAME: voice-assistant
+      # Must match the runtime APP_PREFIX env var in the ECS task definition
+      # and the CloudFront path-based behavior for this demo.
+      APP_PREFIX: /demo5-voice-assistant
 
     steps:
       - name: Checkout Code
@@ -39,6 +42,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -f Dockerfile.aws \
+            --build-arg APP_PREFIX=$APP_PREFIX \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
             .

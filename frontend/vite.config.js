@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 
 export default defineConfig({
-  base: process.env.VITE_API_PREFIX ? process.env.VITE_API_PREFIX + "/" : "/",
+  base: (process.env.VITE_API_PREFIX || "").replace(/\/+$/, "") + "/",
   plugins: [
     tailwindcss(),
     react(),

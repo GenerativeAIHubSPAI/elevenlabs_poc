@@ -31,7 +31,7 @@
 
 import { useRef, useCallback } from "react";
 
-const API_PREFIX = import.meta.env.VITE_API_PREFIX ?? "";
+const API_PREFIX = (import.meta.env.VITE_API_PREFIX ?? "").replace(/\/+$/, "");
 const WS_BASE_URL = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + API_PREFIX;
 
 function buildStreamingUrl({

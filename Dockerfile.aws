@@ -138,6 +138,8 @@ EOF
 # Startup script: pick the right nginx config based on APP_PREFIX
 RUN cat > /entrypoint.sh <<'EOF'
 #!/bin/sh
+# Normalize: drop any trailing slash so /demo5-x/ and /demo5-x behave the same
+APP_PREFIX="${APP_PREFIX%/}"
 if [ -n "${APP_PREFIX}" ]; then
     APP_PREFIX="${APP_PREFIX}" envsubst '${APP_PREFIX}' \
         < /etc/nginx/sites-available/default-prefix.template \
