@@ -31,7 +31,8 @@
 
 import { useRef, useCallback } from "react";
 
-const WS_BASE_URL = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host;
+const API_PREFIX = import.meta.env.VITE_API_PREFIX ?? "";
+const WS_BASE_URL = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + API_PREFIX;
 
 function buildStreamingUrl({
   voiceId,

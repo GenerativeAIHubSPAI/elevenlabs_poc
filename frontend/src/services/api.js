@@ -1,5 +1,6 @@
-const VOICE_TURN_URL = "/voice/turn";
-const KB_INGEST_FILE_URL = "/kb/ingest-pdf";
+const API_PREFIX = import.meta.env.VITE_API_PREFIX ?? "";
+const VOICE_TURN_URL = `${API_PREFIX}/voice/turn`;
+const KB_INGEST_FILE_URL = `${API_PREFIX}/kb/ingest-pdf`;
 
 function encodeWav(samples, sr) {
   const buf = new ArrayBuffer(44 + samples.length * 2);

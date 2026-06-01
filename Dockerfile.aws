@@ -8,6 +8,9 @@ RUN npm ci
 
 COPY frontend/ .
 
+ARG APP_PREFIX=""
+ENV VITE_API_PREFIX=$APP_PREFIX
+
 RUN npm run build
 
 # ── Stage 2: Backend + nginx + supervisor (single container) ───────────────────
@@ -30,41 +33,72 @@ COPY . .
 # ── Frontend static files ──────────────────────────────────────────────────────
 COPY --from=frontend-builder /frontend/dist /var/www/html
 
-# ── nginx config ───────────────────────────────────────────────────────────────
-# Serves frontend on port 80; proxies API routes to uvicorn on 8000.
-# COEP/COOP headers are required by onnxruntime-web (SharedArrayBuffer).
-RUN cat > /etc/nginx/sites-available/default <<'EOF'
+# ── nginx config template ──────────────────────────────────────────────────────
+# APP_PREFIX (e.g. /demo5-voice-assistant) is substituted at container start.
+# Leave APP_PREFIX empty to serve at root (local dev / direct ECS access).
+RUN apt-get update && apt-get install -y --no-install-recommends gettext-base \
+    && rm -rf /var/lib/apt/lists/*
+
+# Two nginx config templates: one for prefix mode, one for root mode.
+RUN cat > /etc/nginx/sites-available/default-prefix.template <<'EOF'
 server {
     listen 80;
 
-    # Required for SharedArrayBuffer / onnxruntime-web
     add_header Cross-Origin-Opener-Policy "same-origin";
     add_header Cross-Origin-Embedder-Policy "require-corp";
 
-    # Serve the built React app
-    location / {
-        root /var/www/html;
-        index index.html;
-        try_files $uri $uri/ /index.html;
+    location ~ ^${APP_PREFIX}/(health|stt|tts|kb|chat|voice|docs|openapi.json) {
+        rewrite ^${APP_PREFIX}/(.*) /$1 break;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffering off;
+        add_header Access-Control-Expose-Headers "X-Transcript, X-Reply-Text" always;
     }
 
-    # Proxy all API routes to uvicorn
+    location ${APP_PREFIX}/ {
+        alias /var/www/html/;
+        index index.html;
+        try_files $uri $uri/ ${APP_PREFIX}/index.html;
+    }
+
+    location / {
+        return 301 ${APP_PREFIX}/;
+    }
+}
+EOF
+
+RUN cat > /etc/nginx/sites-available/default-root.conf <<'EOF'
+server {
+    listen 80;
+
+    add_header Cross-Origin-Opener-Policy "same-origin";
+    add_header Cross-Origin-Embedder-Policy "require-corp";
+
     location ~ ^/(health|stt|tts|kb|chat|voice|docs|openapi.json) {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-
-        # WebSocket / streaming support
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
         proxy_buffering off;
-
-        # Expose custom headers set by the backend
         add_header Access-Control-Expose-Headers "X-Transcript, X-Reply-Text" always;
+    }
+
+    location / {
+        root /var/www/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
     }
 }
 EOF
@@ -96,6 +130,21 @@ stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 EOF
 
+# Startup script: pick the right nginx config based on APP_PREFIX
+RUN cat > /entrypoint.sh <<'EOF'
+#!/bin/sh
+if [ -n "${APP_PREFIX}" ]; then
+    APP_PREFIX="${APP_PREFIX}" envsubst '${APP_PREFIX}' \
+        < /etc/nginx/sites-available/default-prefix.template \
+        > /etc/nginx/sites-available/default
+else
+    cp /etc/nginx/sites-available/default-root.conf \
+       /etc/nginx/sites-available/default
+fi
+exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+EOF
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 80
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+CMD ["/entrypoint.sh"]
