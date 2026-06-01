@@ -13,11 +13,16 @@ import app.routers.voice_turn as voice_turn
 
 app = FastAPI(title="ElevenLabs Voice Bot Backend")
 
+import os
+
+_extra_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://127.0.0.1:3000",
         "http://localhost:3000",
+        *_extra_origins,
     ],
     allow_credentials=True,
     allow_methods=["*"],
