@@ -31,7 +31,7 @@
 
 import { useRef, useCallback } from "react";
 
-const WS_BASE_URL = "ws://localhost:8000";
+const WS_BASE_URL = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host;
 
 function buildStreamingUrl({
   voiceId,
