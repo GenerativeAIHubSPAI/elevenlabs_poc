@@ -43,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gettext-base \
 RUN cat > /etc/nginx/sites-available/default-prefix.template <<'EOF'
 server {
     listen 80;
+    client_max_body_size 25m;
 
     add_header Cross-Origin-Opener-Policy "same-origin";
     add_header Cross-Origin-Embedder-Policy "require-corp";
@@ -82,6 +83,7 @@ EOF
 RUN cat > /etc/nginx/sites-available/default-root.conf <<'EOF'
 server {
     listen 80;
+    client_max_body_size 25m;
 
     add_header Cross-Origin-Opener-Policy "same-origin";
     add_header Cross-Origin-Embedder-Policy "require-corp";
