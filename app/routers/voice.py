@@ -46,6 +46,7 @@ VOICE_MAP: dict[tuple[str, str, str], str] = {
     ("en", "mujer",  "serio"):    "gJx1vCzNCD1EQHT212Ls",
 }
 
+VOICE_RESPONSE_DELAY_SECONDS: float = 0.6
 
 def _resolve_voice_id(
     explicit_voice_id: str | None,
@@ -321,6 +322,9 @@ async def voice_stream(websocket: WebSocket):
 
                             with contextlib.suppress(asyncio.CancelledError):
                                 await current_tts_task
+
+                        if settings.VOICE_RESPONSE_DELAY_SECONDS > 0:
+                            await asyncio.sleep(settings.VOICE_RESPONSE_DELAY_SECONDS)
 
                         current_turn_id = str(uuid.uuid4())
 

@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from websockets import asyncio
 
 from app.core.config import get_settings
 from app.services.elevenlabs import ElevenLabsClient
@@ -23,6 +24,7 @@ router = APIRouter()
 settings = get_settings()
 eleven = ElevenLabsClient()
 
+VOICE_RESPONSE_DELAY_SECONDS: float = 0.6
 
 def resolve_voice_id(voice_id: str | None) -> str:
     selected_voice_id = (
@@ -127,6 +129,8 @@ async def voice_turn(
         question=transcript,
         context_chunks=context,
     )
+    if settings.VOICE_RESPONSE_DELAY_SECONDS > 0:
+        await asyncio.sleep(settings.VOICE_RESPONSE_DELAY_SECONDS)
 
     audio_stream = eleven.stream_tts(
         text=answer,
