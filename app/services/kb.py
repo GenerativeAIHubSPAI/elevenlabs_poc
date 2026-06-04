@@ -22,6 +22,9 @@ from typing import Any
 
 import boto3
 import numpy as np
+import logging
+
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 from app.core.config import get_settings
 
@@ -29,16 +32,47 @@ settings = get_settings()
 
 kb_store: dict[str, list[dict[str, Any]]] = {}
 
+logger = logging.getLogger(__name__)
+
+
+class KnowledgeBaseError(Exception):
+    """Base exception for knowledge-base operations."""
+
+
+class EmbeddingConfigurationError(KnowledgeBaseError):
+    """Raised when embedding configuration is missing or invalid."""
+
+
+class EmbeddingProviderError(KnowledgeBaseError):
+    """Raised when the embedding provider request fails."""
 
 def _get_bedrock_client():
+    if not settings.BEDROCK_EMBEDDING_MODEL_ID:
+        raise EmbeddingConfigurationError(
+            "BEDROCK_EMBEDDING_MODEL_ID is not configured."
+        )
+
+    if not settings.AWS_REGION:
+        raise EmbeddingConfigurationError(
+            "AWS_REGION is not configured."
+        )
+
     if settings.AWS_BEARER_TOKEN_BEDROCK:
-        os.environ["AWS_BEARER_TOKEN_BEDROCK"] = settings.AWS_BEARER_TOKEN_BEDROCK
+        os.environ["AWS_BEARER_TOKEN_BEDROCK"] = (
+            settings.AWS_BEARER_TOKEN_BEDROCK
+        )
 
-    return boto3.client(
-        service_name="bedrock-runtime",
-        region_name=settings.AWS_REGION,
-    )
+    try:
+        return boto3.client(
+            service_name="bedrock-runtime",
+            region_name=settings.AWS_REGION,
+        )
+    except Exception as exc:
+        logger.exception("Failed to create Bedrock Runtime client.")
 
+        raise EmbeddingConfigurationError(
+            f"Failed to create Bedrock Runtime client: {exc}"
+        ) from exc
 
 def chunk_text(
     text: str,
@@ -82,22 +116,69 @@ def embed_text(text: str) -> list[float]:
         "normalize": True,
     }
 
-    response = client.invoke_model(
-        modelId=settings.BEDROCK_EMBEDDING_MODEL_ID,
-        body=json.dumps(payload),
-        accept="application/json",
-        contentType="application/json",
-    )
+    try:
+        response = client.invoke_model(
+            modelId=settings.BEDROCK_EMBEDDING_MODEL_ID,
+            body=json.dumps(payload),
+            accept="application/json",
+            contentType="application/json",
+        )
 
-    body = json.loads(response["body"].read())
+        body = json.loads(response["body"].read())
+
+    except NoCredentialsError as exc:
+        logger.exception("Bedrock credentials are missing.")
+
+        raise EmbeddingProviderError(
+            "Bedrock credentials are missing or unavailable."
+        ) from exc
+
+    except ClientError as exc:
+        error = exc.response.get("Error", {})
+        code = error.get("Code", "Unknown")
+        message = error.get("Message", str(exc))
+
+        logger.exception(
+            "Bedrock embedding request failed. code=%s message=%s",
+            code,
+            message,
+        )
+
+        raise EmbeddingProviderError(
+            f"Bedrock embedding request failed: {code}. {message}"
+        ) from exc
+
+    except BotoCoreError as exc:
+        logger.exception("Bedrock client error.")
+
+        raise EmbeddingProviderError(
+            f"Bedrock client error: {exc}"
+        ) from exc
+
+    except json.JSONDecodeError as exc:
+        logger.exception("Bedrock returned invalid JSON.")
+
+        raise EmbeddingProviderError(
+            "Bedrock returned an invalid JSON response."
+        ) from exc
+
+    except Exception as exc:
+        logger.exception("Unexpected embedding provider error.")
+
+        raise EmbeddingProviderError(
+            f"Unexpected embedding provider error: {exc}"
+        ) from exc
 
     embedding = body.get("embedding")
 
     if not embedding:
-        raise RuntimeError(f"No embedding returned by Bedrock: {body}")
+        logger.error("Bedrock response did not contain an embedding: %s", body)
+
+        raise EmbeddingProviderError(
+            "Bedrock response did not contain an embedding."
+        )
 
     return _normalize_vector(embedding)
-
 
 def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     a = np.array(vec_a, dtype=np.float32)
