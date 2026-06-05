@@ -1,0 +1,31 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RotateBedrockTokenSecret",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:UpdateSecretVersionStage"
+      ],
+      "Resource": "arn:aws:secretsmanager:eu-west-3:442042532301:secret:aiademo/shared/bedrock-api-key-Sr5NU9"
+    },
+    {
+      "Sid": "GenerateAndTestBedrockBearerToken",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:CallWithBearerToken",
+        "bedrock:InvokeModel"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RestartVoiceAssistantService",
+      "Effect": "Allow",
+      "Action": "ecs:UpdateService",
+      "Resource": "arn:aws:ecs:eu-west-3:442042532301:service/aiademo-cluster/aiademo-voice-assistant-service"
+    }
+  ]
+}

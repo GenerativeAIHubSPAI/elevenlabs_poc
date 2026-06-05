@@ -252,3 +252,9 @@ docker-compose.override.yml
 # OS files
 .DS_Store
 Thumbs.db
+
+# Lambda modules and artifacts
+node_modules/
+function.zip
+*-event.json
+*-response.json

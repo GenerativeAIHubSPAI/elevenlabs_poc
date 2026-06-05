@@ -1,0 +1,4 @@
+{
+  "ScheduleExpression": "rate(4 hours)",
+  "Duration": "1h"
+}
