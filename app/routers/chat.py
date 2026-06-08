@@ -6,12 +6,15 @@ builds session-aware context, calls the LLM service, stores the conversation
 turns, and returns the assistant answer with source metadata.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.schemas.requests import ChatRequest, ChatResponse, SourceChunk
-from app.services.kb import kb_search
+
 from app.services.llm import llm_client
 from app.services.memory import add_turn, format_history
+from app.core.knowledge_sources import resolve_knowledge_namespaces
+from app.services.kb import kb_search_many
+
 
 router = APIRouter()
 
@@ -30,10 +33,24 @@ async def ask(body: ChatRequest):
         if conversation_history
         else body.question
     )
+    try:
+        namespaces = resolve_knowledge_namespaces(
+            knowledge_source=body.knowledge_source,
+            session_id=body.session_id,
+            include_uploaded_pdfs=body.include_uploaded_pdfs,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "invalid_knowledge_source",
+                "message": str(exc),
+            },
+        ) from exc
 
-    matches = kb_search(
+    matches = kb_search_many(
         query=retrieval_query,
-        namespace=body.namespace,
+        namespaces=namespaces,
         top_k=body.top_k,
     )
 
@@ -67,9 +84,11 @@ async def ask(body: ChatRequest):
         role="assistant",
         content=answer,
         metadata={
-            "sources": context,
-            "namespace": body.namespace,
-        },
+        "sources": context,
+        "knowledge_source": body.knowledge_source,
+        "namespaces": namespaces,
+        "include_uploaded_pdfs": body.include_uploaded_pdfs,
+    },
     )
 
     return ChatResponse(

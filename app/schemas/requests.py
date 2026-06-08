@@ -83,6 +83,22 @@ class KBIngestTextRequest(BaseModel):
         examples=["default"],
     )
 
+    knowledge_source: str = Field(
+        default="gachapon_distribution",
+        examples=[
+            "cache",
+            "insurance_company",
+            "flight_attendant",
+            "gachapon_distribution",
+        ],
+        description="Selected frontend knowledge source.",
+    )
+
+    include_uploaded_pdfs: bool = Field(
+        default=False,
+        description="If true, also search PDFs uploaded during the current session.",
+    )
+
     model_config = {
         "json_schema_extra": {
             "example": {

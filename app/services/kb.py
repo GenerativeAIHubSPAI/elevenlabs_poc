@@ -277,6 +277,24 @@ def kb_search(query: str, namespace: str, top_k: int = 4):
 
     return results[:top_k]
 
+def kb_search_many(
+    query: str,
+    namespaces: list[str],
+    top_k: int = 4,
+):
+    results = []
+
+    for namespace in namespaces:
+        namespace_results = kb_search(
+            query=query,
+            namespace=namespace,
+            top_k=top_k,
+        )
+        results.extend(namespace_results)
+
+    results.sort(key=lambda item: item["score"], reverse=True)
+
+    return results[:top_k]
 
 def kb_list(namespace: str, limit: int = 20):
     chunks = kb_store.get(namespace, [])[:limit]
