@@ -258,3 +258,8 @@ node_modules/
 function.zip
 *-event.json
 *-response.json
+
+#files related to knowledge base management
+*.pdf
+*.docx
+*.xlsx
