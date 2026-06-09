@@ -1,6 +1,20 @@
 name: Deploy App
 
 on:
+
+  push:
+
+    branches:
+      - main
+
+    paths:
+      - "frontend/**"
+      - "app/**"
+      - "main.py"
+      - "requirements.txt"
+      - "Dockerfile.aws"
+      - ".github/workflows/deploy_app.yml"
+
   workflow_dispatch:
 
 permissions:
@@ -17,6 +31,7 @@ jobs:
       ECS_CLUSTER: aiademo-cluster
       TASK_DEFINITION_NAME: voice-assistant
       CONTAINER_NAME: voice-assistant
+      CLOUDFRONT_DISTRIBUTION_ID: EXOZMRRC0GDGG
       # Must match the runtime APP_PREFIX env var in the ECS task definition
       # and the CloudFront path-based behavior for this demo.
       APP_PREFIX: /demo5-voice-assistant
@@ -103,7 +118,7 @@ jobs:
                   echo "DEPLOYMENT SUCCESSFUL"
                   echo "Your application is running at: http://$PUBLIC_IP"
                   echo "------------------------------------------------------"
-                  exit 0
+                  break
                 fi
               fi
             fi
@@ -111,7 +126,17 @@ jobs:
             echo "Attempt $i/$MAX_RETRIES: Task not ready. Checking again in 20s..."
             sleep 20
           done
+          
+          if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
+            exit 0
+          fi
 
           echo "Error: Timed out waiting for a running task with a Public IP."
           aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].events[0:3].message' --output text
           exit 1
+      
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "${{ env.APP_PREFIX }}/*" "${{ env.APP_PREFIX }}/"
