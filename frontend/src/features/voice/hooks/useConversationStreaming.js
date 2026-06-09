@@ -284,8 +284,7 @@ export function useConversationStreaming({
 
   const start = useCallback(async () => {
     if (!sessionId) {
-      onMessage("error", "Missing sessionId.");
-      return;
+      throw new Error("Missing sessionId.");
     }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     visualizer.start(stream);
@@ -313,7 +312,10 @@ export function useConversationStreaming({
 
     ws.onmessage = (e) => handleServerMessage(JSON.parse(e.data));
 
-    ws.onerror = () => onMessage("error", "WebSocket connection error");
+    ws.onerror = (event) => {
+      console.error("WebSocket error:", event);
+      onMessage("error", "WebSocket connection error. Check DevTools → Network → WS.");
+    };
 
     ws.onclose = () => {
       if (isActiveRef.current) {

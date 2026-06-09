@@ -1,0 +1,12 @@
+{
+  "namespace": "gachapon_distribution",
+  "label": "Gachapon Distribution",
+  "description": "Client-service assistant for gachapon machines, capsules, stock, maintenance, and distribution.",
+  "documents": [
+    {
+      "title": "GachaBarna Product Catalogue",
+      "s3_key": "static-business-examples/gachapon_distribution/documents/gachabarna_catalog.pdf",
+      "source_type": "pdf"
+    }
+  ]
+}

@@ -82,8 +82,13 @@ const uploadNamespace = `cache:${sessionId}`;
       // No iniciar si el hook está en un estado transitorio inconsistente
       if (conversation.isBusy()) return;
       setMessages([]); // nueva sesión → limpiar el historial anterior
-      try { await conversation.start(); }
-      catch (e) { setState("idle"); }
+      try {
+        await conversation.start();
+      } catch (e) {
+        console.error("Failed to start conversation:", e);
+        onMessage("error", e?.message ?? "Failed to start conversation.");
+        setState("idle");
+      }
     } else {
       // Colgar siempre está permitido, incluso mientras el asistente habla.
       // stop() ya llama a stopPlayback() internamente.
