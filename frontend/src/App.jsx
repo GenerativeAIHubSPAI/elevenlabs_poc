@@ -11,16 +11,25 @@ export default function App() {
   const [state, setState]                           = useState("idle");
   const [messages, setMessages]                     = useState([]);
   const [muted, setMuted]                           = useState(false);
+  const userId = "test";
+  const [sessionId] = useState(() => crypto.randomUUID());
   const [config, setConfig] = useState({
     idioma: "es",
-    sexo:   "hombre",
-    tono:   "cercano",
+    sexo: "hombre",
+    tono: "cercano",
+    knowledgeSource: "gachapon_distribution",
   });
+  const activeNamespace =
+  config.knowledgeSource === "cache"
+    ? `cache:${sessionId}`
+    : config.knowledgeSource;
 
   const handleConfigChange = useCallback((key, value) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   }, []);
 
+  
+const uploadNamespace = `cache:${sessionId}`;
   const canvasRef = useRef(null);
   const liveBgRef = useRef(null);
   const stateRef  = useRef(state);
@@ -41,11 +50,13 @@ export default function App() {
     visualizer,
     onMessage,
     onStateChange: setState,
-    voiceId:      import.meta.env.VITE_ELEVENLABS_VOICE_ID,
-    namespace:    import.meta.env.VITE_KB_NAMESPACE ?? "default",
+    voiceId: import.meta.env.VITE_ELEVENLABS_VOICE_ID,
+    namespace: activeNamespace,
     languageCode: config.idioma,
-    gender:       config.sexo,
-    tone:         config.tono,
+    gender: config.sexo,
+    tone: config.tono,
+    userId: "test",
+    sessionId,
   });
 
   useEffect(() => {
@@ -160,6 +171,7 @@ export default function App() {
         onToggle={() => setSidebarOpen((v) => !v)}
         config={config}
         onConfigChange={handleConfigChange}
+        uploadNamespace={uploadNamespace}
       />
     </>
   );

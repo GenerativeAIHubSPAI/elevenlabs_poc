@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     KB_CHUNK_OVERLAP: int = 80
     KB_TOP_K: int = 4
 
+    # Static business examples
+    KB_STATIC_BUCKET: str | None = None
+    KB_STATIC_PREFIX: str = "static-business-examples/"
+    KB_STATIC_NAMESPACES: str = "gachapon_distribution"
+
     @computed_field
     @property
     def BASE_URL(self) -> str:

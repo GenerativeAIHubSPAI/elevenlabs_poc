@@ -20,6 +20,11 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from app.schemas.requests import KBIngestTextRequest, KBSearchRequest
 from app.services.kb import kb_ingest_text, kb_search
 from app.services.pdf_parser import extract_pdf_pages
+from app.services.static_kb_loader import (
+    StaticKBLoaderError,
+    load_all_static_namespaces,
+    load_static_namespace,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -179,3 +184,38 @@ async def search_kb(body: KBSearchRequest):
             top_k=body.top_k,
         ),
     }
+
+
+@router.post("/load-static")
+async def load_static_examples():
+    try:
+        return load_all_static_namespaces()
+
+    except StaticKBLoaderError as exc:
+        logger.exception("Static KB loading failed.")
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "static_kb_loading_error",
+                "message": str(exc),
+            },
+        ) from exc
+
+
+@router.post("/load-static/{namespace}")
+async def load_static_example(namespace: str):
+    try:
+        return load_static_namespace(namespace)
+
+    except StaticKBLoaderError as exc:
+        logger.exception("Static KB namespace loading failed.")
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "static_kb_namespace_loading_error",
+                "namespace": namespace,
+                "message": str(exc),
+            },
+        ) from exc

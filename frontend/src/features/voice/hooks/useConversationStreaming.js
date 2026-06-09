@@ -67,6 +67,8 @@ export function useConversationStreaming({
   languageCode = "es",
   gender = "hombre",
   tone = "cercano",
+  userId = "test",
+  sessionId,
 }) {
   const wsRef = useRef(null);
   const isActiveRef = useRef(false);
@@ -281,9 +283,11 @@ export function useConversationStreaming({
   // ─── Public API ────────────────────────────────────────────────────────────
 
   const start = useCallback(async () => {
+    if (!sessionId) {
+      onMessage("error", "Missing sessionId.");
+      return;
+    }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const userId = "test"; // fixed for now — should come from auth later
-    const sessionId = crypto.randomUUID(); // new UUID on every conversation start
     visualizer.start(stream);
 
     const ws = new WebSocket(
@@ -324,6 +328,8 @@ export function useConversationStreaming({
     languageCode,
     gender,
     tone,
+    userId,
+    sessionId,
     startCapture,
     handleServerMessage,
     onMessage,

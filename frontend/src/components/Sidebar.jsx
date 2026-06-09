@@ -1,5 +1,12 @@
 import { FileUpload } from "../features/upload/index.js";
 
+const KNOWLEDGE_SOURCE_OPTIONS = [
+  { value: "cache", label: "Uploaded PDFs" },
+  { value: "insurance_company", label: "Insurance Company" },
+  { value: "flight_attendant", label: "Flight Attendant" },
+  { value: "gachapon_distribution", label: "Gachapon Distribution" },
+];
+
 const CONFIG_OPTIONS = {
   idioma: [
     { value: "es", label: "Spanish" },
@@ -16,7 +23,13 @@ const CONFIG_OPTIONS = {
   ],
 };
 
-export default function Sidebar({ isOpen, onToggle, config, onConfigChange }) {
+export default function Sidebar({
+  isOpen,
+  onToggle,
+  config,
+  onConfigChange,
+  uploadNamespace,
+}) {
   return (
     <aside
         className={`h-full w-80 fixed right-0 top-0 z-50 flex flex-col shadow-sm bg-white border-l border-[#c7c4d7] panel-transition ${
@@ -46,7 +59,23 @@ export default function Sidebar({ isOpen, onToggle, config, onConfigChange }) {
           <div className="p-6 space-y-4">
             <h3 className="text-sm font-bold text-[#4f5f76]">Configuration</h3>
             <div className="space-y-4 bg-white p-3 rounded-xl border border-[#c7c4d7]/40">
-
+              {/* Knowledge source */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#565e74] uppercase mb-1">
+                  Knowledge Source
+                </label>
+                <select
+                  value={config.knowledgeSource}
+                  onChange={(e) => onConfigChange("knowledgeSource", e.target.value)}
+                  className="w-full bg-white border border-[#c7c4d7] rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#4f5f76]"
+                >
+                  {KNOWLEDGE_SOURCE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {/* Language */}
               <div>
                 <label className="block text-[11px] font-bold text-[#565e74] uppercase mb-1">
@@ -100,8 +129,8 @@ export default function Sidebar({ isOpen, onToggle, config, onConfigChange }) {
 
           {/* Instructions / Upload */}
           <div className="px-6 pb-6 flex-1 flex flex-col">
-            <h3 className="text-sm font-bold text-[#4f5f76] mb-3">Instructions</h3>
-            <FileUpload />
+            <h3 className="text-sm font-bold text-[#4f5f76] mb-3">Session PDF Upload</h3>
+            <FileUpload namespace={uploadNamespace} />
           </div>
         </div>
 
