@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     ELEVENLABS_STT_AUDIO_FORMAT: str = "pcm_16000"
     ELEVENLABS_STT_SAMPLE_RATE: int = 16000
 
+    # Voice behavior
+    VOICE_RESPONSE_DELAY_SECONDS: float = 0.6
+
     # Bedrock
     AWS_REGION: str = "eu-west-3"
     AWS_BEARER_TOKEN_BEDROCK: str | None = None
