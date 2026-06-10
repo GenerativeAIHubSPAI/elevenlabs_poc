@@ -18,6 +18,7 @@ import uuid
 import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.core.system_prompts import resolve_system_prompt
 from app.core.config import get_settings
 from app.services.elevenlabs import ElevenLabsClient
 from app.services.llm import llm_client
@@ -300,12 +301,7 @@ async def voice_stream(websocket: WebSocket):
                         ]
 
                         answer = await llm_client.answer(
-                            system_prompt=(
-                                "You are a concise voice assistant. "
-                                "Use the provided knowledge base context when possible. "
-                                "If the context is insufficient, say what is missing. "
-                                "Keep answers short because they will be spoken aloud."
-                            ),
+                            system_prompt=resolve_system_prompt(namespace=namespace),
                             question=transcript,
                             context_chunks=context,
                         )

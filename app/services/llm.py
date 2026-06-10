@@ -132,17 +132,21 @@ class LLMClient:
 
         input_text = (
             f"{system_prompt}\n\n"
-            "Rules:\n"
-            "- Answer in Spanish unless the user asks otherwise.\n"
-            "- Use the conversation history to understand follow-up questions.\n"
-            "- Use the knowledge base context for factual answers.\n"
-            "- If the current question is a follow-up, resolve references like 'it', 'that one', 'the second one', 'ese', 'eso', 'el segundo', using the conversation history.\n"
-            "- If the knowledge base context contains product catalogue information, extract product names, references, descriptions, and prices.\n"
-            "- If the answer is not present in the context or history, say exactly what information is missing.\n"
-            "- Keep the answer concise because it may be spoken aloud.\n\n"
-            f"Conversation history:\n{conversation_history or '[No previous conversation history]'}\n\n"
-            f"Current user question:\n{question}\n\n"
-            f"Knowledge base context:\n{context_text or '[No relevant KB context found]'}"
+            "Instrucciones para esta respuesta:\n"
+            "- Responde en español salvo que el usuario pida otro idioma.\n"
+            "- Usa el historial para entender preguntas de seguimiento y mantener continuidad.\n"
+            "- Si la pregunta actual depende de algo anterior, resuelve referencias como 'eso', 'ese', 'el segundo', 'that one' o 'it' usando el historial.\n"
+            "- Usa el contexto de la base de conocimiento para responder datos concretos.\n"
+            "- Si el contexto contiene nombres, referencias, precios, condiciones, pasos o procedimientos, úsalos con precisión.\n"
+            "- Si el usuario hace una pregunta general como '¿en qué puedes ayudarme?', responde como un asistente real: da una bienvenida breve y ofrece opciones útiles de ayuda según el contexto disponible.\n"
+            "- Si no hay contexto relevante y la pregunta es general, no hables de limitaciones internas; guía al usuario hacia una consulta concreta.\n"
+            "- Si el usuario pregunta por un dato concreto y no aparece en el contexto ni en el historial, dilo de forma amable y ofrece el siguiente paso más útil.\n"
+            "- Prioriza una respuesta clara, servicial y accionable antes que una respuesta larga.\n"
+            "- Mantén un tono amable, paciente y positivo, sin sonar exagerado ni artificial.\n"
+            "- La respuesta será leída en voz alta: usa frases naturales, breves y fáciles de pronunciar.\n\n"
+            f"Historial de conversación:\n{conversation_history or '[Sin historial previo]'}\n\n"
+            f"Pregunta actual del usuario:\n{question}\n\n"
+            f"Contexto de la base de conocimiento:\n{context_text or '[No se encontró contexto relevante en la base de conocimiento]'}"
         )
 
         payload = {

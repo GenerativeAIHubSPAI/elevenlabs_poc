@@ -15,6 +15,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from websockets import asyncio
 
+from app.core.system_prompts import resolve_system_prompt
 from app.core.config import get_settings
 from app.services.elevenlabs import ElevenLabsClient
 from app.services.kb import kb_search
@@ -120,12 +121,7 @@ async def voice_turn(
     ]
 
     answer = await llm_client.answer(
-        system_prompt=(
-            "You are a concise Spanish voice assistant. "
-            "Answer using the provided knowledge base context whenever possible. "
-            "If the knowledge base does not contain the answer, say what is missing. "
-            "Keep the answer short because it will be spoken aloud."
-        ),
+        system_prompt=resolve_system_prompt(namespace=namespace),
         question=transcript,
         context_chunks=context,
     )

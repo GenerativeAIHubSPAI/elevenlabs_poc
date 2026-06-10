@@ -9,7 +9,7 @@ turns, and returns the assistant answer with source metadata.
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.requests import ChatRequest, ChatResponse, SourceChunk
-
+from app.core.system_prompts import resolve_system_prompt
 from app.services.llm import llm_client
 from app.services.memory import add_turn, format_history
 from app.core.knowledge_sources import resolve_knowledge_namespaces
@@ -33,11 +33,15 @@ async def ask(body: ChatRequest):
         if conversation_history
         else body.question
     )
+
+    knowledge_source = getattr(body, "knowledge_source", None) or body.namespace
+    include_uploaded_pdfs = getattr(body, "include_uploaded_pdfs", False)
+
     try:
         namespaces = resolve_knowledge_namespaces(
-            knowledge_source=body.knowledge_source,
+            knowledge_source=knowledge_source,
             session_id=body.session_id,
-            include_uploaded_pdfs=body.include_uploaded_pdfs,
+            include_uploaded_pdfs=include_uploaded_pdfs,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -66,8 +70,17 @@ async def ask(body: ChatRequest):
         for m in matches
     ]
 
+    system_prompt = (
+        body.system_prompt.strip()
+        if body.system_prompt and body.system_prompt.strip()
+        else resolve_system_prompt(
+            namespace=body.namespace,
+            knowledge_source=knowledge_source,
+        )
+    )
+
     answer = await llm_client.answer(
-        system_prompt=body.system_prompt,
+        system_prompt=system_prompt,
         question=body.question,
         context_chunks=context,
         conversation_history=conversation_history,
@@ -84,11 +97,11 @@ async def ask(body: ChatRequest):
         role="assistant",
         content=answer,
         metadata={
-        "sources": context,
-        "knowledge_source": body.knowledge_source,
-        "namespaces": namespaces,
-        "include_uploaded_pdfs": body.include_uploaded_pdfs,
-    },
+            "sources": context,
+            "knowledge_source": knowledge_source,
+            "namespaces": namespaces,
+            "include_uploaded_pdfs": include_uploaded_pdfs,
+        },
     )
 
     return ChatResponse(
