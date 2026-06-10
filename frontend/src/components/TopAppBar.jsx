@@ -33,8 +33,40 @@ const HELP_STEPS = [
   },
 ];
 
-export default function TopAppBar({ sidebarOpen, onToggleSidebar }) {
+function getInitials(value, fallback = "U") {
+  if (!value || typeof value !== "string") return fallback;
+
+  const cleaned = value
+    .trim()
+    .replace(/@.*$/, "")
+    .replace(/[_\-.]+/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (!cleaned) return fallback;
+
+  const parts = cleaned.split(" ").filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return parts[0].slice(0, 2).toUpperCase();
+}
+
+function formatDisplayName(value, fallback = "Guest user") {
+  if (!value || typeof value !== "string") return fallback;
+
+  return value.trim() || fallback;
+}
+
+export default function TopAppBar({
+  sidebarOpen,
+  onToggleSidebar,
+  userName = "Guest user",
+}) {
   const [helpOpen, setHelpOpen] = useState(false);
+  const displayName = formatDisplayName(userName);
+const initials = getInitials(displayName);
 
   return (
     <>
@@ -73,8 +105,12 @@ export default function TopAppBar({ sidebarOpen, onToggleSidebar }) {
             </button>
           </div>
 
-          <div className="w-10 h-10 rounded-full bg-[#4f5f76] flex items-center justify-center text-white font-bold text-sm shrink-0">
-            AG
+          <div
+            title={displayName}
+            aria-label={`Current user: ${displayName}`}
+            className="w-10 h-10 rounded-full bg-[#4f5f76] flex items-center justify-center text-white font-bold text-sm shrink-0"
+          >
+            {initials}
           </div>
         </div>
       </header>

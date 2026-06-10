@@ -11,7 +11,8 @@ export default function App() {
   const [state, setState]                           = useState("idle");
   const [messages, setMessages]                     = useState([]);
   const [muted, setMuted]                           = useState(false);
-  const userId = "test";
+  const userId = import.meta.env.VITE_USER_ID || "test";
+  const userName = import.meta.env.VITE_USER_NAME || userId;
   const [sessionId] = useState(() => crypto.randomUUID());
   const [config, setConfig] = useState({
     idioma: "es",
@@ -99,7 +100,11 @@ const uploadNamespace = `cache:${sessionId}`;
 
   return (
     <>
-      <TopAppBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((v) => !v)} />
+      <TopAppBar
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+        userName={userName}
+      />
 
       <main
         className={`mt-16 p-10 h-[calc(100vh-4rem)] panel-transition ${

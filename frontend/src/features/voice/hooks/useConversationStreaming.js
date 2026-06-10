@@ -67,7 +67,7 @@ export function useConversationStreaming({
   languageCode = "es",
   gender = "hombre",
   tone = "cercano",
-  userId = "test",
+  userId,
   sessionId,
 }) {
   const wsRef = useRef(null);
