@@ -1,21 +1,94 @@
 # main.py
 
+import asyncio
+import logging
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-import app.routers.health as health
-import app.routers.voice as voice
-import app.routers.stt as stt
-import app.routers.kb as kb
 import app.routers.chat as chat
+import app.routers.health as health
+import app.routers.kb as kb
+import app.routers.stt as stt
 import app.routers.tts as tts
+import app.routers.voice as voice
 import app.routers.voice_turn as voice_turn
 
-app = FastAPI(title="ElevenLabs Voice Bot Backend")
+from app.services.static_kb_loader import (
+    StaticKBLoaderError,
+    list_static_namespaces,
+    load_static_namespace,
+)
 
-import os
+logger = logging.getLogger(__name__)
 
-_extra_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+
+async def preload_static_kbs() -> None:
+    """Preload static KBs into memory when the backend container starts."""
+    enabled = os.getenv("KB_AUTOLOAD_STATIC", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+
+    if not enabled:
+        logger.info("Static KB autoload disabled.")
+        return
+
+    try:
+        sources = list_static_namespaces()
+        namespaces = [source["value"] for source in sources]
+
+    except StaticKBLoaderError:
+        logger.exception("Failed to discover static KB namespaces.")
+        return
+
+    if not namespaces:
+        logger.warning("No static KB namespaces discovered.")
+        return
+
+    for namespace in namespaces:
+        try:
+            logger.info("Preloading static KB namespace=%s", namespace)
+
+            result = await asyncio.to_thread(
+                load_static_namespace,
+                namespace,
+            )
+
+            logger.info(
+                "Static KB preloaded namespace=%s documents=%s chunks=%s",
+                namespace,
+                result.get("documents_loaded"),
+                result.get("chunks_ingested"),
+            )
+
+        except Exception:
+            logger.exception(
+                "Failed to preload static KB namespace=%s",
+                namespace,
+            )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await preload_static_kbs()
+    yield
+
+
+app = FastAPI(
+    title="ElevenLabs Voice Bot Backend",
+    lifespan=lifespan,
+)
+
+
+_extra_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,11 +123,15 @@ async def root():
             "/voices",
             "/stt/transcribe",
             "/kb/ingest-text",
+            "/kb/ingest-pdf",
             "/kb/search",
+            "/kb/static-sources",
+            "/kb/load-static",
+            "/kb/load-static/{namespace}",
             "/chat/ask",
+            "/chat/voice-stream",
             "/tts/speak",
             "/tts/stream",
-            "/chat/voice-stream",
             "/voice/turn",
         ],
     }
