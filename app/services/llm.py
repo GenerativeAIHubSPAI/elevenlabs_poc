@@ -132,18 +132,22 @@ class LLMClient:
 
         input_text = (
             f"{system_prompt}\n\n"
-            "Instrucciones para esta respuesta:\n"
-            "- Responde en español salvo que el usuario pida otro idioma.\n"
-            "- Usa el historial para entender preguntas de seguimiento y mantener continuidad.\n"
-            "- Si la pregunta actual depende de algo anterior, resuelve referencias como 'eso', 'ese', 'el segundo', 'that one' o 'it' usando el historial.\n"
-            "- Usa el contexto de la base de conocimiento para responder datos concretos.\n"
-            "- Si el contexto contiene nombres, referencias, precios, condiciones, pasos o procedimientos, úsalos con precisión.\n"
-            "- Si el usuario hace una pregunta general como '¿en qué puedes ayudarme?', responde como un asistente real: da una bienvenida breve y ofrece opciones útiles de ayuda según el contexto disponible.\n"
-            "- Si no hay contexto relevante y la pregunta es general, no hables de limitaciones internas; guía al usuario hacia una consulta concreta.\n"
-            "- Si el usuario pregunta por un dato concreto y no aparece en el contexto ni en el historial, dilo de forma amable y ofrece el siguiente paso más útil.\n"
-            "- Prioriza una respuesta clara, servicial y accionable antes que una respuesta larga.\n"
-            "- Mantén un tono amable, paciente y positivo, sin sonar exagerado ni artificial.\n"
-            "- La respuesta será leída en voz alta: usa frases naturales, breves y fáciles de pronunciar.\n\n"
+            """Instrucciones para esta respuesta:\n
+            - Responde en español salvo que el usuario te hable en ingles, entonces responde en ingles.\n
+            - Usa el historial para entender preguntas de seguimiento y mantener continuidad.\n
+            - Si la pregunta actual depende de algo anterior, resuelve referencias como 'eso', 'ese', 'el segundo', 'that one' o 'it' usando el historial.\n
+            - Usa el contexto de la base de conocimiento para responder datos concretos.\n
+            - Si el contexto contiene nombres, referencias, precios, condiciones, pasos o procedimientos, úsalos con precisión.\n
+            - Si el usuario hace una pregunta general como '¿en qué puedes ayudarme?', responde como un asistente real: 
+              da una bienvenida breve si encaja de manera natural y no has dado la bienvenida anteriormente, ofrece opciones útiles de ayuda según el contexto disponible de manera breve.\n
+            - Si no hay contexto relevante y la pregunta es general, no hables de limitaciones internas; guía al usuario hacia una consulta concreta.\n
+            - Si el usuario pregunta por un dato concreto y no aparece en el contexto ni en el historial, dilo de forma amable y ofrece el siguiente paso más útil.\n
+            - Prioriza una respuesta clara, servicial y accionable antes que una respuesta larga.\n
+            - intenta evitar fillers como "entiendo", "claro", "perfecto", "de acuerdo", "gracias por la información", 
+              "es un placer ayudarte", "estoy aquí para ayudarte" y similares, a menos que encajen de forma natural en la respuesta.
+            - No es necesario usar fillers en cada respuesta, y a veces es mejor omitirlos para sonar más directo y profesional.
+            - Mantén un tono amable, paciente y positivo, sin sonar exagerado ni artificial.\n
+            - La respuesta será leída en voz alta: usa frases naturales, breves y fáciles de pronunciar.\n\n"""
             f"Historial de conversación:\n{conversation_history or '[Sin historial previo]'}\n\n"
             f"Pregunta actual del usuario:\n{question}\n\n"
             f"Contexto de la base de conocimiento:\n{context_text or '[No se encontró contexto relevante en la base de conocimiento]'}"

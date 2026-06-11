@@ -24,6 +24,7 @@ from app.services.static_kb_loader import (
 
 logger = logging.getLogger(__name__)
 
+logger.warning("STATIC KB AUTOLOAD STARTED")
 
 async def preload_static_kbs() -> None:
     """Preload static KBs into memory when the backend container starts."""
