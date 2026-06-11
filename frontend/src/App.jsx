@@ -4,6 +4,8 @@ import Sidebar from "./components/Sidebar.jsx";
 import { ChatLog } from "./features/chat/index.js";
 import { VoiceControls, useVisualizer, useConversationStreaming } from "./features/voice/index.js";
 import "./styles/main.css";
+import { fetchStaticKnowledgeSources } from "./services/api";
+
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen]               = useState(true);
@@ -20,6 +22,9 @@ export default function App() {
     tono: "cercano",
     knowledgeSource: "gachapon_distribution",
   });
+  const [knowledgeSources, setKnowledgeSources] = useState([
+  { value: "cache", label: "Uploaded PDFs" },
+]);
   const activeNamespace =
   config.knowledgeSource === "cache"
     ? `cache:${sessionId}`
@@ -72,6 +77,47 @@ const uploadNamespace = `cache:${sessionId}`;
   useEffect(() => {
     if (!isTranscriptionView) visualizer.resizeCanvas();
   }, [isTranscriptionView, visualizer]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadKnowledgeSources() {
+      try {
+        const data = await fetchStaticKnowledgeSources();
+        const staticSources = data.sources ?? [];
+
+        if (cancelled) return;
+
+        setKnowledgeSources([
+          ...staticSources,
+          { value: "cache", label: "Uploaded PDFs" },
+        ]);
+
+        setConfig((prev) => {
+          const currentSourceExists =
+            staticSources.some((source) => source.value === prev.knowledgeSource) ||
+            prev.knowledgeSource === "cache";
+
+          if (currentSourceExists) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            knowledgeSource: staticSources[0]?.value ?? "cache",
+          };
+        });
+      } catch (err) {
+        console.error("Failed to load static KB sources", err);
+      }
+    }
+
+    loadKnowledgeSources();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleMuteToggle = useCallback(() => {
     const nowMuted = conversation.toggleMute();
@@ -181,6 +227,8 @@ const uploadNamespace = `cache:${sessionId}`;
         onToggle={() => setSidebarOpen((v) => !v)}
         config={config}
         onConfigChange={handleConfigChange}
+        knowledgeSources={knowledgeSources}
+        sessionId={sessionId}
         uploadNamespace={uploadNamespace}
       />
     </>

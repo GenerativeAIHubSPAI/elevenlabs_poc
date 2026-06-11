@@ -1,12 +1,5 @@
 import { FileUpload } from "../features/upload/index.js";
 
-const KNOWLEDGE_SOURCE_OPTIONS = [
-  { value: "cache", label: "Uploaded PDFs" },
-  { value: "insurance_company", label: "Insurance Company" },
-  { value: "flight_attendant", label: "Flight Attendant" },
-  { value: "gachapon_distribution", label: "Gachapon Distribution" },
-];
-
 const CONFIG_OPTIONS = {
   idioma: [
     { value: "es", label: "Spanish" },
@@ -28,6 +21,8 @@ export default function Sidebar({
   onToggle,
   config,
   onConfigChange,
+  knowledgeSources = [],
+  sessionId,
   uploadNamespace,
 }) {
   return (
@@ -69,9 +64,9 @@ export default function Sidebar({
                   onChange={(e) => onConfigChange("knowledgeSource", e.target.value)}
                   className="w-full bg-white border border-[#c7c4d7] rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#4f5f76]"
                 >
-                  {KNOWLEDGE_SOURCE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
+                  {knowledgeSources.map((source) => (
+                    <option key={source.value} value={source.value}>
+                      {source.label}
                     </option>
                   ))}
                 </select>
@@ -128,10 +123,12 @@ export default function Sidebar({
           </div>
 
           {/* Instructions / Upload */}
-          <div className="px-6 pb-6 flex-1 flex flex-col">
-            <h3 className="text-sm font-bold text-[#4f5f76] mb-3">Session PDF Upload</h3>
-            <FileUpload namespace={uploadNamespace} />
-          </div>
+          {config.knowledgeSource === "cache" && (
+            <div className="px-6 pb-6 flex-1 flex flex-col">
+              <h3 className="text-sm font-bold text-[#4f5f76] mb-3">Session PDF Upload</h3>
+              <FileUpload namespace={uploadNamespace ?? `cache:${sessionId}`} />
+            </div>
+          )}
         </div>
 
       </aside>

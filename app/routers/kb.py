@@ -22,6 +22,7 @@ from app.services.kb import kb_ingest_text, kb_search
 from app.services.pdf_parser import extract_pdf_pages
 from app.services.static_kb_loader import (
     StaticKBLoaderError,
+    list_static_namespaces,
     load_all_static_namespaces,
     load_static_namespace,
 )
@@ -216,6 +217,25 @@ async def load_static_example(namespace: str):
             detail={
                 "code": "static_kb_namespace_loading_error",
                 "namespace": namespace,
+                "message": str(exc),
+            },
+        ) from exc
+    
+@router.get("/static-sources")
+def list_static_sources():
+    """List available static KB namespaces from S3 folders."""
+    try:
+        return {
+            "sources": list_static_namespaces(),
+        }
+
+    except StaticKBLoaderError as exc:
+        logger.exception("Static KB source listing failed.")
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "static_kb_source_listing_error",
                 "message": str(exc),
             },
         ) from exc

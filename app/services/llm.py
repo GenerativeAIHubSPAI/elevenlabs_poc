@@ -155,8 +155,8 @@ class LLMClient:
             "max_output_tokens": settings.LLM_MAX_OUTPUT_TOKENS,
         }
 
-        if settings.LLM_TEMPERATURE is not None:
-            payload["temperature"] = settings.LLM_TEMPERATURE
+        # if settings.LLM_TEMPERATURE is not None:
+        #     payload["temperature"] = settings.LLM_TEMPERATURE
 
         headers = {
             "Authorization": f"Bearer {settings.LLM_API_KEY}",

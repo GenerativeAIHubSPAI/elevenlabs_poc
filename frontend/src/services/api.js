@@ -51,3 +51,13 @@ export async function sendAudio(samples, sr) {
   if (!res.ok) throw new Error(`Error ${res.status}: ${await res.text()}`);
   return res;
 }
+
+export async function fetchStaticKnowledgeSources() {
+  const res = await fetch(`${API_PREFIX}/kb/static-sources`);
+
+  if (!res.ok) {
+    throw new Error(`Failed to load static KB sources: ${res.status}: ${await res.text()}`);
+  }
+
+  return res.json();
+}

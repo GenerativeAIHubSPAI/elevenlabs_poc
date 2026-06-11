@@ -175,8 +175,8 @@ def load_static_namespace(namespace: str) -> dict[str, Any]:
 def load_all_static_namespaces() -> dict[str, Any]:
     """Load all configured static namespaces from S3."""
 
-    namespaces = _get_static_namespaces()
-
+    namespaces = [source["value"] for source in list_static_namespaces()]
+    
     results = []
     total_chunks = 0
 
@@ -191,3 +191,40 @@ def load_all_static_namespaces() -> dict[str, Any]:
         "chunks_ingested": total_chunks,
         "results": results,
     }
+
+def list_static_namespaces() -> list[dict[str, str]]:
+    """List available static KB namespaces from S3 folder prefixes."""
+    bucket = _get_static_bucket()
+    prefix = _get_static_prefix()
+
+    s3 = _get_s3_client()
+
+    try:
+        response = s3.list_objects_v2(
+            Bucket=bucket,
+            Prefix=f"{prefix}/",
+            Delimiter="/",
+        )
+
+    except (ClientError, BotoCoreError) as exc:
+        raise StaticKBLoaderError(
+            f"Failed to list static KB namespaces under s3://{bucket}/{prefix}/: {exc}"
+        ) from exc
+
+    sources: list[dict[str, str]] = []
+
+    for item in response.get("CommonPrefixes", []):
+        folder_prefix = item.get("Prefix", "")
+        namespace = folder_prefix.replace(f"{prefix}/", "").strip("/")
+
+        if namespace:
+            sources.append(
+                {
+                    "value": namespace,
+                    "label": namespace.replace("_", " ").title(),
+                }
+            )
+
+    sources.sort(key=lambda source: source["label"])
+
+    return sources
