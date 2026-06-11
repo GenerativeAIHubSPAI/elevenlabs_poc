@@ -1,10 +1,16 @@
 const COGNITO_DOMAIN = import.meta.env.VITE_COGNITO_DOMAIN;
 const CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID;
 const REDIRECT_URI =
-  import.meta.env.VITE_COGNITO_REDIRECT_URI || window.location.origin + window.location.pathname;
+  import.meta.env.VITE_COGNITO_REDIRECT_URI ||
+  window.location.origin + window.location.pathname;
 
-const TOKEN_STORAGE_KEY = "voicecopilot_cognito_tokens";
+const TOKEN_STORAGE_KEY = "voicecopilot_auth";
 const PKCE_STORAGE_KEY = "voicecopilot_pkce_verifier";
+const GUEST_ID_STORAGE_KEY = "voicecopilot_guest_id";
+
+function isCognitoConfigured() {
+  return Boolean(COGNITO_DOMAIN && CLIENT_ID);
+}
 
 function base64UrlEncode(buffer) {
   return btoa(String.fromCharCode(...new Uint8Array(buffer)))
@@ -19,7 +25,8 @@ async function sha256(value) {
 }
 
 function randomString(length = 64) {
-  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+  const charset =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
   const values = crypto.getRandomValues(new Uint8Array(length));
 
   return Array.from(values)
@@ -40,7 +47,47 @@ function decodeJwt(token) {
   return JSON.parse(json);
 }
 
+function normalizeGuestName(name) {
+  const cleaned = String(name || "").trim();
+
+  if (!cleaned) {
+    return "Guest user";
+  }
+
+  return cleaned.slice(0, 80);
+}
+
+export function createGuestSession(name = "Guest user") {
+  const guestId =
+    localStorage.getItem(GUEST_ID_STORAGE_KEY) ||
+    `guest:${crypto.randomUUID()}`;
+
+  localStorage.setItem(GUEST_ID_STORAGE_KEY, guestId);
+
+  const auth = {
+    authMode: "guest",
+    userId: guestId,
+    userName: normalizeGuestName(name),
+    email: "",
+    id_token: null,
+    access_token: null,
+    claims: null,
+  };
+
+  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(auth));
+
+  return auth;
+}
+
+export function canUseCognitoLogin() {
+  return isCognitoConfigured();
+}
+
 export async function login() {
+  if (!isCognitoConfigured()) {
+    throw new Error("Cognito is not configured for this environment.");
+  }
+
   const verifier = randomString();
   const challenge = base64UrlEncode(await sha256(verifier));
 
@@ -66,6 +113,10 @@ export async function handleAuthCallback() {
     return getStoredAuth();
   }
 
+  if (!isCognitoConfigured()) {
+    throw new Error("Cognito callback received, but Cognito is not configured.");
+  }
+
   const verifier = sessionStorage.getItem(PKCE_STORAGE_KEY);
 
   if (!verifier) {
@@ -89,7 +140,9 @@ export async function handleAuthCallback() {
   });
 
   if (!res.ok) {
-    throw new Error(`Cognito token exchange failed: ${res.status}: ${await res.text()}`);
+    throw new Error(
+      `Cognito token exchange failed: ${res.status}: ${await res.text()}`
+    );
   }
 
   const tokens = await res.json();
@@ -97,6 +150,7 @@ export async function handleAuthCallback() {
 
   const auth = {
     ...tokens,
+    authMode: "authenticated",
     claims,
     userId: claims.sub,
     userName:
@@ -104,7 +158,7 @@ export async function handleAuthCallback() {
       [claims.given_name, claims.family_name].filter(Boolean).join(" ") ||
       claims.email ||
       "Authenticated user",
-    email: claims.email,
+    email: claims.email || "",
   };
 
   localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(auth));
@@ -126,6 +180,11 @@ export function getStoredAuth() {
 
   try {
     const auth = JSON.parse(raw);
+
+    if (auth.authMode === "guest") {
+      return auth;
+    }
+
     const now = Math.floor(Date.now() / 1000);
 
     if (auth.claims?.exp && auth.claims.exp <= now) {
@@ -141,10 +200,23 @@ export function getStoredAuth() {
 }
 
 export function logout(redirect = true) {
+  const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
+  let auth = null;
+
+  try {
+    auth = raw ? JSON.parse(raw) : null;
+  } catch {
+    auth = null;
+  }
+
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   sessionStorage.removeItem(PKCE_STORAGE_KEY);
 
-  if (!redirect) {
+  if (!redirect || auth?.authMode === "guest") {
+    return;
+  }
+
+  if (!isCognitoConfigured()) {
     return;
   }
 
