@@ -12,27 +12,31 @@
  *  - Supports barge-in: call interrupt() to cancel ongoing TTS
  *
  * WebSocket message protocol (server → client):
- *   stt_session_started      — ElevenLabs STT session is ready
- *   user_partial_transcript  — live partial transcript while user speaks
- *   user_committed_transcript— VAD detected end of utterance, transcript final
- *   sources                  — KB chunks used for the answer
- *   assistant_text           — LLM answer text
- *   assistant_audio_chunk    — one MP3 chunk (base64), accumulate until "done"
- *   assistant_audio_done     — all TTS chunks sent, safe to decode and play
- *   assistant_interrupted    — server cancelled TTS due to barge-in
- *   stt_error / error        — error events
+ *   stt_session_started       — ElevenLabs STT session is ready
+ *   user_partial_transcript   — live partial transcript while user speaks
+ *   user_committed_transcript — VAD detected end of utterance, transcript final
+ *   sources                   — KB chunks used for the answer
+ *   assistant_text            — LLM answer text
+ *   assistant_audio_chunk     — one MP3 chunk (base64), accumulate until done
+ *   assistant_audio_done      — all TTS chunks sent, safe to decode and play
+ *   assistant_interrupted     — server cancelled TTS due to barge-in
+ *   stt_error / error         — error events
  *
  * WebSocket message protocol (client → server):
- *   audio_chunk  { audio_base64 }  — 100 ms of raw PCM 16 kHz mono Int16
- *   interrupt                      — cancel ongoing TTS
- *   commit                         — force-commit current STT utterance
- *   close                          — graceful shutdown
+ *   audio_chunk  { audio_base64 } — 100 ms of raw PCM 16 kHz mono Int16
+ *   interrupt                     — cancel ongoing TTS
+ *   commit                        — force-commit current STT utterance
+ *   close                         — graceful shutdown
  */
 
 import { useRef, useCallback } from "react";
 
 const API_PREFIX = (import.meta.env.VITE_API_PREFIX ?? "").replace(/\/+$/, "");
-const WS_BASE_URL = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + API_PREFIX;
+const WS_BASE_URL =
+  (location.protocol === "https:" ? "wss" : "ws") +
+  "://" +
+  location.host +
+  API_PREFIX;
 
 function buildStreamingUrl({
   voiceId,
@@ -41,6 +45,9 @@ function buildStreamingUrl({
   gender,
   tone,
   userId,
+  userName,
+  authMode,
+  authToken,
   sessionId,
 }) {
   const params = new URLSearchParams({
@@ -49,12 +56,14 @@ function buildStreamingUrl({
     user_id: userId,
     session_id: sessionId,
   });
-  // voice_id is optional — the server falls back to the VOICE_MAP lookup
+
   if (voiceId) params.set("voice_id", voiceId);
-  // gender and tone let the server pick the right ElevenLabs voice
   if (gender) params.set("gender", gender);
   if (tone) params.set("tone", tone);
-  // The router is mounted at /chat in main.py, so the full path is /chat/voice-stream
+  if (userName) params.set("user_name", userName);
+  if (authMode) params.set("auth_mode", authMode);
+  if (authToken) params.set("token", authToken);
+
   return `${WS_BASE_URL}/chat/voice-stream?${params}`;
 }
 
@@ -67,7 +76,10 @@ export function useConversationStreaming({
   languageCode = "es",
   gender = "hombre",
   tone = "cercano",
-  userId,
+  userId = "guest:anonymous",
+  userName = "Guest user",
+  authMode = "guest",
+  authToken,
   sessionId,
 }) {
   const wsRef = useRef(null);
@@ -75,24 +87,24 @@ export function useConversationStreaming({
   const isReplyingRef = useRef(false);
   const mutedRef = useRef(false);
 
-  // Capture pipeline (16 kHz AudioContext + ScriptProcessor)
   const captureCtxRef = useRef(null);
   const processorRef = useRef(null);
 
-  // Playback pipeline
   const playbackCtxRef = useRef(null);
-  const currentSrcRef = useRef(null); // AudioBufferSourceNode in flight
-  const audioChunksRef = useRef([]); // accumulates Uint8Array MP3 chunks
-
-  // ─── Playback helpers ────────────────────────────────────────────────────
+  const currentSrcRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   const stopPlayback = useCallback(() => {
     if (currentSrcRef.current) {
       try {
         currentSrcRef.current.stop();
-      } catch (_) {}
+      } catch (_) {
+        // Ignore already-stopped audio source.
+      }
+
       currentSrcRef.current = null;
     }
+
     visualizer.detachReplySource();
     audioChunksRef.current = [];
     isReplyingRef.current = false;
@@ -101,30 +113,32 @@ export function useConversationStreaming({
   const playAccumulatedChunks = useCallback(async () => {
     const chunks = audioChunksRef.current;
     audioChunksRef.current = [];
-    if (chunks.length === 0) return;
 
-    // Close any previous playback context before creating a new one
+    if (chunks.length === 0) {
+      return;
+    }
+
     if (playbackCtxRef.current) {
       playbackCtxRef.current.close();
       playbackCtxRef.current = null;
     }
 
-    // Concatenate all binary chunks into a single ArrayBuffer
-    const totalBytes = chunks.reduce((n, c) => n + c.byteLength, 0);
+    const totalBytes = chunks.reduce((n, chunk) => n + chunk.byteLength, 0);
     const combined = new Uint8Array(totalBytes);
+
     let offset = 0;
+
     for (const chunk of chunks) {
       combined.set(chunk, offset);
       offset += chunk.byteLength;
     }
 
-    // Decode the MP3 and play it back through Web Audio
     const actx = new AudioContext();
     playbackCtxRef.current = actx;
 
     let audioBuffer;
+
     try {
-      // decodeAudioData takes ownership of the ArrayBuffer (it's transferred)
       audioBuffer = await actx.decodeAudioData(combined.buffer);
     } catch (err) {
       onMessage("error", `Audio decode error: ${err.message}`);
@@ -133,7 +147,9 @@ export function useConversationStreaming({
 
     const src = actx.createBufferSource();
     src.buffer = audioBuffer;
+
     visualizer.attachReplySource(actx, src);
+
     src.connect(actx.destination);
     currentSrcRef.current = src;
 
@@ -141,66 +157,63 @@ export function useConversationStreaming({
       visualizer.detachReplySource();
       currentSrcRef.current = null;
       isReplyingRef.current = false;
-      if (isActiveRef.current) onStateChange("active");
+
+      if (isActiveRef.current) {
+        onStateChange("active");
+      }
     };
 
     src.start();
   }, [visualizer, onMessage, onStateChange]);
 
-  // ─── Incoming WebSocket messages ─────────────────────────────────────────
-
   const handleServerMessage = useCallback(
     async (msg) => {
       switch (msg.type) {
         case "stt_session_started":
-          // ElevenLabs STT handshake complete — audio is flowing and VAD is active
           onStateChange("active");
           break;
 
         case "user_partial_transcript":
-          // Fires continuously while the user is speaking (updates fast)
-          // Uncomment to display live "ghost" text in the chat UI:
-          // onMessage("user_partial", msg.text);
           break;
 
         case "user_committed_transcript":
-          // Server-side VAD detected end-of-utterance → transcript is final
           onMessage("user", msg.text);
           onStateChange("processing");
           break;
 
         case "sources":
-          // Knowledge base chunks used to answer — available for display if needed
-          // msg.sources: Array<{ chunk_id, title, text, score }>
           break;
 
         case "assistant_text":
-          // LLM answer text arrives before TTS chunks
           onMessage("assistant", msg.text);
           onStateChange("replying");
           isReplyingRef.current = true;
-          audioChunksRef.current = []; // reset buffer before accumulating new reply
+          audioChunksRef.current = [];
           break;
 
         case "assistant_audio_chunk": {
-          // One MP3 chunk — decode base64 to binary and accumulate
           const binary = atob(msg.audio_base64);
           const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++)
+
+          for (let i = 0; i < binary.length; i += 1) {
             bytes[i] = binary.charCodeAt(i);
+          }
+
           audioChunksRef.current.push(bytes);
           break;
         }
 
         case "assistant_audio_done":
-          // All TTS chunks received — concatenate, decode MP3, and play
           await playAccumulatedChunks();
           break;
 
         case "assistant_interrupted":
-          // Server cancelled TTS mid-stream (barge-in from the user)
           stopPlayback();
-          if (isActiveRef.current) onStateChange("active");
+
+          if (isActiveRef.current) {
+            onStateChange("active");
+          }
+
           break;
 
         case "stt_error":
@@ -218,39 +231,37 @@ export function useConversationStreaming({
     [onMessage, onStateChange, playAccumulatedChunks, stopPlayback],
   );
 
-  // ─── Mic capture → WebSocket ─────────────────────────────────────────────
-
   const startCapture = useCallback((stream) => {
-    // Dedicated AudioContext fixed at 16 kHz — matches ELEVENLABS_STT_SAMPLE_RATE.
-    // We need a separate context from the visualizer's because the visualizer runs
-    // at the browser's default rate (usually 48 kHz) while ElevenLabs STT wants 16 kHz.
     const ctx = new AudioContext({ sampleRate: 16000 });
     captureCtxRef.current = ctx;
 
     const source = ctx.createMediaStreamSource(stream);
-
-    // ScriptProcessor (deprecated but universally supported).
-    // Buffer size must be a power of 2. 2048 @ 16 kHz = 128 ms per callback.
-    // Modern alternative: AudioWorkletNode (more performant, runs off the main thread).
     const processor = ctx.createScriptProcessor(2048, 1, 1);
+
     processorRef.current = processor;
 
-    processor.onaudioprocess = (e) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-      if (mutedRef.current) return; // micrófono silenciado — no enviar audio al servidor
+    processor.onaudioprocess = (event) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        return;
+      }
 
-      // Convert Float32 [-1, 1] samples to signed Int16 PCM
-      const float32 = e.inputBuffer.getChannelData(0);
+      if (mutedRef.current) {
+        return;
+      }
+
+      const float32 = event.inputBuffer.getChannelData(0);
       const int16 = new Int16Array(float32.length);
-      for (let i = 0; i < float32.length; i++) {
+
+      for (let i = 0; i < float32.length; i += 1) {
         int16[i] = Math.max(-1, Math.min(1, float32[i])) * 0x7fff;
       }
 
-      // Base64-encode the raw PCM bytes
       const bytes = new Uint8Array(int16.buffer);
       let binary = "";
-      for (let i = 0; i < bytes.length; i++)
+
+      for (let i = 0; i < bytes.length; i += 1) {
         binary += String.fromCharCode(bytes[i]);
+      }
 
       wsRef.current.send(
         JSON.stringify({
@@ -260,10 +271,9 @@ export function useConversationStreaming({
       );
     };
 
-    // ScriptProcessor requires a path to destination to fire onaudioprocess.
-    // We route through a GainNode at 0 to avoid sending raw mic audio to speakers.
     const silentGain = ctx.createGain();
     silentGain.gain.value = 0;
+
     source.connect(processor);
     processor.connect(silentGain);
     silentGain.connect(ctx.destination);
@@ -274,18 +284,18 @@ export function useConversationStreaming({
       processorRef.current.disconnect();
       processorRef.current = null;
     }
+
     if (captureCtxRef.current) {
       captureCtxRef.current.close();
       captureCtxRef.current = null;
     }
   }, []);
 
-  // ─── Public API ────────────────────────────────────────────────────────────
-
   const start = useCallback(async () => {
     if (!sessionId) {
       throw new Error("Missing sessionId.");
     }
+
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     visualizer.start(stream);
 
@@ -297,24 +307,29 @@ export function useConversationStreaming({
         gender,
         tone,
         userId,
+        userName,
+        authMode,
+        authToken,
         sessionId,
       }),
     );
+
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // WebSocket open — start pumping PCM. State becomes "active" once the
-      // server confirms the ElevenLabs STT session (stt_session_started).
       startCapture(stream);
       isActiveRef.current = true;
-      onStateChange("processing"); // transitional: "connecting to STT..."
+      onStateChange("processing");
     };
 
-    ws.onmessage = (e) => handleServerMessage(JSON.parse(e.data));
+    ws.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
 
     ws.onerror = (event) => {
       console.error("WebSocket error:", event);
-      onMessage("error", "WebSocket connection error. Check DevTools → Network → WS.");
+      onMessage(
+        "error",
+        "WebSocket connection error. Check DevTools → Network → WS.",
+      );
     };
 
     ws.onclose = () => {
@@ -331,6 +346,9 @@ export function useConversationStreaming({
     gender,
     tone,
     userId,
+    userName,
+    authMode,
+    authToken,
     sessionId,
     startCapture,
     handleServerMessage,
@@ -348,6 +366,7 @@ export function useConversationStreaming({
       if (wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: "close" }));
       }
+
       wsRef.current = null;
     }
 
@@ -360,10 +379,6 @@ export function useConversationStreaming({
     onStateChange("idle");
   }, [visualizer, stopCapture, stopPlayback, onStateChange]);
 
-  /**
-   * Cancel the assistant's ongoing TTS and resume listening (barge-in).
-   * Only has effect while the assistant is replying.
-   */
   const interrupt = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN && isReplyingRef.current) {
       wsRef.current.send(JSON.stringify({ type: "interrupt" }));
@@ -376,10 +391,19 @@ export function useConversationStreaming({
 
   const toggleMute = useCallback(() => {
     mutedRef.current = !mutedRef.current;
-    return mutedRef.current; // devuelve el nuevo estado
+
+    return mutedRef.current;
   }, []);
 
   const isMuted = useCallback(() => mutedRef.current, []);
 
-  return { start, stop, interrupt, isRunning, isBusy, toggleMute, isMuted };
+  return {
+    start,
+    stop,
+    interrupt,
+    isRunning,
+    isBusy,
+    toggleMute,
+    isMuted,
+  };
 }

@@ -11,43 +11,44 @@ speech when the frontend sends an interrupt event.
 
 import asyncio
 import base64
-import json
-from urllib.parse import urlencode
 import contextlib
+import json
 import uuid
+from urllib.parse import urlencode
+
 import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.core.system_prompts import resolve_system_prompt
 from app.core.config import get_settings
+from app.core.system_prompts import resolve_system_prompt
 from app.services.elevenlabs import ElevenLabsClient
-from app.services.llm import llm_client
 from app.services.kb import kb_search
+from app.services.llm import llm_client
 
 router = APIRouter()
 settings = get_settings()
 eleven = ElevenLabsClient()
 
 # ─── Voice ID matrix ──────────────────────────────────────────────────────────
-# Key: (language_code, gender, tone)  → ElevenLabs voice_id
+# Key: (language_code, gender, tone) -> ElevenLabs voice_id
 VOICE_MAP: dict[tuple[str, str, str], str] = {
-    # ── Spanish ────────────────────────────────────────────────────────────────
+    # Spanish
     ("es", "hombre", "energico"): "eEyWolF7iBpMA65GbtAm",
-    ("es", "hombre", "cercano"):  "w8u1dIxiWVelUtUQg1MB",
-    ("es", "hombre", "serio"):    "m8dLaNJTf2Faapk51VKn",
-    ("es", "mujer",  "energico"): "uQw4jpKzMLrZuo0RLPS9",
-    ("es", "mujer",  "cercano"):  "1eHrpOW5l98cxiSRjbzJ",
-    ("es", "mujer",  "serio"):    "kwNLkNjbQHMw9YUFZsHI",
-    # ── English ────────────────────────────────────────────────────────────────
+    ("es", "hombre", "cercano"): "w8u1dIxiWVelUtUQg1MB",
+    ("es", "hombre", "serio"): "m8dLaNJTf2Faapk51VKn",
+    ("es", "mujer", "energico"): "uQw4jpKzMLrZuo0RLPS9",
+    ("es", "mujer", "cercano"): "1eHrpOW5l98cxiSRjbzJ",
+    ("es", "mujer", "serio"): "kwNLkNjbQHMw9YUFZsHI",
+
+    # English
     ("en", "hombre", "energico"): "s0XGIcqmceN2l7kjsqoZ",
-    ("en", "hombre", "cercano"):  "TWutjvRaJqAX89preB4e",
-    ("en", "hombre", "serio"):    "xKhbyU7E3bC6T89Kn26c",
-    ("en", "mujer",  "energico"): "8vf2Pg7VZD0Piv8GA8v9",
-    ("en", "mujer",  "cercano"):  "2vbhUP8zyKg4dEZaTWGn",
-    ("en", "mujer",  "serio"):    "gJx1vCzNCD1EQHT212Ls",
+    ("en", "hombre", "cercano"): "TWutjvRaJqAX89preB4e",
+    ("en", "hombre", "serio"): "xKhbyU7E3bC6T89Kn26c",
+    ("en", "mujer", "energico"): "8vf2Pg7VZD0Piv8GA8v9",
+    ("en", "mujer", "cercano"): "2vbhUP8zyKg4dEZaTWGn",
+    ("en", "mujer", "serio"): "gJx1vCzNCD1EQHT212Ls",
 }
 
-VOICE_RESPONSE_DELAY_SECONDS: float = 0.6
 
 def _resolve_voice_id(
     explicit_voice_id: str | None,
@@ -55,18 +56,14 @@ def _resolve_voice_id(
     gender: str | None,
     tone: str | None,
 ) -> str | None:
-    """
-    Return the voice_id to use, in priority order:
-    1. An explicit ?voice_id= query param (overrides everything).
-    2. The VOICE_MAP lookup from language_code + gender + tone.
-    3. The settings fallbacks (ELEVENLABS_DEFAULT_VOICE_ID / ELEVENLABS_VOICE_ID).
-    """
+    """Resolve the ElevenLabs voice ID from explicit input, UI config, or settings."""
     if explicit_voice_id:
         return explicit_voice_id
 
     if language_code and gender and tone:
         key = (language_code.lower(), gender.lower(), tone.lower())
         mapped = VOICE_MAP.get(key)
+
         if mapped:
             return mapped
 
@@ -74,6 +71,7 @@ def _resolve_voice_id(
 
 
 def _build_realtime_stt_url(language_code: str | None = None) -> str:
+    """Build the ElevenLabs realtime STT WebSocket URL."""
     query = {
         "model_id": settings.ELEVENLABS_REALTIME_STT_MODEL,
         "audio_format": settings.ELEVENLABS_STT_AUDIO_FORMAT,
@@ -90,13 +88,55 @@ def _build_realtime_stt_url(language_code: str | None = None) -> str:
 
     return f"wss://api.elevenlabs.io/v1/speech-to-text/realtime?{urlencode(query)}"
 
+
+def _clean_display_name(user_name: str | None) -> str:
+    """Return a safe display name for prompt use."""
+    value = (user_name or "Guest user").strip()
+    value = value.replace("\n", " ").replace("\r", " ")
+    value = " ".join(value.split())
+
+    return value[:80] or "Guest user"
+
+
+def _clean_auth_mode(auth_mode: str | None) -> str:
+    """Normalize auth mode."""
+    value = (auth_mode or "guest").strip().lower()
+
+    if value not in {"guest", "authenticated"}:
+        return "guest"
+
+    return value
+
+
+def _build_user_aware_system_prompt(
+    namespace: str,
+    user_id: str,
+    display_name: str,
+    auth_mode: str,
+) -> str:
+    """Add user identity context to the base business prompt."""
+    base_prompt = resolve_system_prompt(namespace=namespace)
+
+    return (
+        f"{base_prompt}\n\n"
+        "User identity context:\n"
+        f"- user_id: {user_id}\n"
+        f"- auth_mode: {auth_mode}\n"
+        f"- display_name: {display_name}\n\n"
+        "Use the user's display name naturally when helpful, especially in greetings "
+        "or clarifying questions. Do not repeat the name in every sentence. "
+        "For guest users, treat the name as display-only and do not assume verified identity."
+    )
+
+
 async def _send_answer_audio(
     websocket: WebSocket,
     answer: str,
     voice_id: str,
     turn_id: str,
     language_code: str | None = None,
-):
+) -> None:
+    """Send assistant text and streamed TTS audio to the browser."""
     await websocket.send_json(
         {
             "type": "assistant_text",
@@ -140,9 +180,6 @@ async def _send_answer_audio(
         raise
 
     except Exception as exc:
-        # Catch TTS errors (e.g. voice_not_found 404) and forward them to the
-        # client over the WebSocket so the error is visible instead of only
-        # appearing as an unhandled task exception in the server logs.
         with contextlib.suppress(Exception):
             await websocket.send_json(
                 {
@@ -152,14 +189,27 @@ async def _send_answer_audio(
                 }
             )
 
+
 @router.websocket("/voice-stream")
-async def voice_stream(websocket: WebSocket):
+async def voice_stream(websocket: WebSocket) -> None:
+    """Realtime browser audio -> STT -> KB -> LLM -> TTS WebSocket route."""
     await websocket.accept()
 
     language_code = websocket.query_params.get("language_code")
-    gender        = websocket.query_params.get("gender")
-    tone          = websocket.query_params.get("tone")
-    namespace     = websocket.query_params.get("namespace") or settings.KB_DEFAULT_NAMESPACE
+    gender = websocket.query_params.get("gender")
+    tone = websocket.query_params.get("tone")
+    namespace = websocket.query_params.get("namespace") or settings.KB_DEFAULT_NAMESPACE
+
+    user_id = websocket.query_params.get("user_id") or "guest:anonymous"
+    user_name = websocket.query_params.get("user_name") or "Guest user"
+    auth_mode = _clean_auth_mode(websocket.query_params.get("auth_mode"))
+    token = websocket.query_params.get("token")
+
+    # TODO(@auth): verify Cognito token when auth_mode == "authenticated".
+    # For now, guest mode is supported and authenticated mode is accepted but not verified.
+    _ = token
+
+    display_name = _clean_display_name(user_name)
 
     voice_id = _resolve_voice_id(
         explicit_voice_id=websocket.query_params.get("voice_id"),
@@ -172,7 +222,10 @@ async def voice_stream(websocket: WebSocket):
         await websocket.send_json(
             {
                 "type": "error",
-                "message": "Missing voice_id. Pass ?voice_id=... or set ELEVENLABS_DEFAULT_VOICE_ID.",
+                "message": (
+                    "Missing voice_id. Pass ?voice_id=... or set "
+                    "ELEVENLABS_DEFAULT_VOICE_ID."
+                ),
             }
         )
         await websocket.close()
@@ -190,8 +243,9 @@ async def voice_stream(websocket: WebSocket):
             max_size=10 * 1024 * 1024,
         ) as stt_ws:
 
-            async def browser_to_elevenlabs():
+            async def browser_to_elevenlabs() -> None:
                 nonlocal current_tts_task, current_turn_id
+
                 while True:
                     msg = await websocket.receive_json()
 
@@ -207,6 +261,7 @@ async def voice_stream(websocket: WebSocket):
                                 }
                             )
                         )
+
                     elif msg.get("type") == "interrupt":
                         if current_tts_task and not current_tts_task.done():
                             current_tts_task.cancel()
@@ -223,6 +278,7 @@ async def voice_stream(websocket: WebSocket):
 
                         current_tts_task = None
                         current_turn_id = None
+
                     elif msg.get("type") == "commit":
                         await stt_ws.send(
                             json.dumps(
@@ -245,14 +301,15 @@ async def voice_stream(websocket: WebSocket):
                         await websocket.close()
                         break
 
-            async def elevenlabs_to_browser():
+            async def elevenlabs_to_browser() -> None:
                 nonlocal current_tts_task, current_turn_id
+
                 while True:
                     try:
                         raw = await stt_ws.recv()
                     except websockets.exceptions.ConnectionClosed:
-                        # ElevenLabs closed the STT socket cleanly — nothing to do
                         return
+
                     event = json.loads(raw)
                     message_type = event.get("message_type")
 
@@ -274,6 +331,7 @@ async def voice_stream(websocket: WebSocket):
 
                     elif message_type == "committed_transcript":
                         transcript = event.get("text", "").strip()
+
                         if not transcript:
                             continue
 
@@ -292,16 +350,23 @@ async def voice_stream(websocket: WebSocket):
 
                         context = [
                             {
-                                "chunk_id": m["chunk_id"],
-                                "title": m["title"],
-                                "text": m["text"],
-                                "score": m["score"],
+                                "chunk_id": match["chunk_id"],
+                                "title": match["title"],
+                                "text": match["text"],
+                                "score": match["score"],
                             }
-                            for m in matches
+                            for match in matches
                         ]
 
+                        system_prompt = _build_user_aware_system_prompt(
+                            namespace=namespace,
+                            user_id=user_id,
+                            display_name=display_name,
+                            auth_mode=auth_mode,
+                        )
+
                         answer = await llm_client.answer(
-                            system_prompt=resolve_system_prompt(namespace=namespace),
+                            system_prompt=system_prompt,
                             question=transcript,
                             context_chunks=context,
                         )
@@ -350,6 +415,7 @@ async def voice_stream(websocket: WebSocket):
     except WebSocketDisconnect:
         if current_tts_task and not current_tts_task.done():
             current_tts_task.cancel()
+
         return
 
     except Exception as exc:
