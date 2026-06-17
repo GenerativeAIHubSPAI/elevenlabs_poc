@@ -7,13 +7,12 @@ service, and returns ingestion/search results for downstream chat and voice flow
 """
 
 from datetime import UTC, datetime
-from threading import Lock
+from threading import Lock, Thread
 from typing import Any
 import logging
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     File,
     Form,
     HTTPException,
@@ -74,6 +73,16 @@ def _list_static_kb_jobs() -> list[dict[str, Any]]:
     """List static KB load job statuses."""
     with _static_kb_jobs_lock:
         return [dict(job) for job in _static_kb_jobs.values()]
+
+
+def _start_static_kb_thread(namespace: str) -> None:
+    """Start a daemon thread to load a static KB namespace."""
+    thread = Thread(
+        target=_run_static_kb_load,
+        args=(namespace,),
+        daemon=True,
+    )
+    thread.start()
 
 
 def _run_static_kb_load(namespace: str) -> None:
@@ -146,6 +155,7 @@ def _run_static_kb_load(namespace: str) -> None:
 
 @router.post("/ingest-text")
 async def ingest_text(body: KBIngestTextRequest):
+    """Ingest plain text into the knowledge base."""
     saved = kb_ingest_text(
         title=body.title,
         text=body.text,
@@ -167,6 +177,7 @@ async def ingest_pdf(
     namespace: str = Form(default="default"),
     title: str | None = Form(default=None),
 ):
+    """Ingest a PDF into the knowledge base."""
     if file.content_type not in {
         "application/pdf",
         "application/octet-stream",
@@ -292,6 +303,7 @@ async def ingest_pdf(
 
 @router.post("/search")
 async def search_kb(body: KBSearchRequest):
+    """Search the knowledge base."""
     return {
         "namespace": body.namespace,
         "results": kb_search(
@@ -306,7 +318,7 @@ async def search_kb(body: KBSearchRequest):
     "/load-static",
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def load_static_examples(background_tasks: BackgroundTasks):
+def load_static_examples():
     """Queue static KB loading for all discovered namespaces."""
     try:
         namespaces = [
@@ -347,7 +359,7 @@ async def load_static_examples(background_tasks: BackgroundTasks):
             },
         )
 
-        background_tasks.add_task(_run_static_kb_load, namespace)
+        _start_static_kb_thread(namespace)
 
         job = _get_static_kb_job(namespace)
 
@@ -364,10 +376,7 @@ async def load_static_examples(background_tasks: BackgroundTasks):
     "/load-static/{namespace}",
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def load_static_example(
-    namespace: str,
-    background_tasks: BackgroundTasks,
-):
+def load_static_example(namespace: str):
     """Queue static KB loading for one namespace."""
     existing = _get_static_kb_job(namespace)
 
@@ -387,7 +396,7 @@ async def load_static_example(
         },
     )
 
-    background_tasks.add_task(_run_static_kb_load, namespace)
+    _start_static_kb_thread(namespace)
 
     return _get_static_kb_job(namespace)
 
