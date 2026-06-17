@@ -5,8 +5,23 @@ knowledge base and for searching stored chunks by namespace. It validates upload
 extracts PDF text, delegates chunk creation and embedding to the knowledge-base
 service, and returns ingestion/search results for downstream chat and voice flows.
 """
+
+from datetime import UTC, datetime
+from threading import Lock
+from typing import Any
 import logging
 
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
+
+from app.schemas.requests import KBIngestTextRequest, KBSearchRequest
 from app.services.kb import (
     EmbeddingConfigurationError,
     EmbeddingProviderError,
@@ -14,21 +29,120 @@ from app.services.kb import (
     kb_ingest_text,
     kb_search,
 )
-
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-
-from app.schemas.requests import KBIngestTextRequest, KBSearchRequest
-from app.services.kb import kb_ingest_text, kb_search
 from app.services.pdf_parser import extract_pdf_pages
 from app.services.static_kb_loader import (
     StaticKBLoaderError,
     list_static_namespaces,
-    load_all_static_namespaces,
     load_static_namespace,
 )
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+_static_kb_jobs: dict[str, dict[str, Any]] = {}
+_static_kb_jobs_lock = Lock()
+
+
+def _now_iso() -> str:
+    """Return the current UTC time as an ISO-8601 string."""
+    return datetime.now(UTC).isoformat()
+
+
+def _set_static_kb_job(namespace: str, payload: dict[str, Any]) -> None:
+    """Store static KB load job status in memory."""
+    with _static_kb_jobs_lock:
+        current = _static_kb_jobs.get(namespace, {})
+        _static_kb_jobs[namespace] = {
+            **current,
+            **payload,
+            "updated_at": _now_iso(),
+        }
+
+
+def _get_static_kb_job(namespace: str) -> dict[str, Any] | None:
+    """Get static KB load job status."""
+    with _static_kb_jobs_lock:
+        job = _static_kb_jobs.get(namespace)
+
+        if job is None:
+            return None
+
+        return dict(job)
+
+
+def _list_static_kb_jobs() -> list[dict[str, Any]]:
+    """List static KB load job statuses."""
+    with _static_kb_jobs_lock:
+        return [dict(job) for job in _static_kb_jobs.values()]
+
+
+def _run_static_kb_load(namespace: str) -> None:
+    """Load one static KB namespace in the background."""
+    _set_static_kb_job(
+        namespace,
+        {
+            "namespace": namespace,
+            "status": "running",
+            "started_at": _now_iso(),
+            "finished_at": None,
+            "result": None,
+            "error": None,
+        },
+    )
+
+    try:
+        logger.info("Background static KB load started namespace=%s", namespace)
+
+        result = load_static_namespace(namespace)
+
+        _set_static_kb_job(
+            namespace,
+            {
+                "status": "succeeded",
+                "finished_at": _now_iso(),
+                "result": result,
+                "error": None,
+            },
+        )
+
+        logger.info(
+            "Background static KB load succeeded namespace=%s result=%s",
+            namespace,
+            result,
+        )
+
+    except StaticKBLoaderError as exc:
+        logger.exception(
+            "Background static KB load failed namespace=%s",
+            namespace,
+        )
+
+        _set_static_kb_job(
+            namespace,
+            {
+                "status": "failed",
+                "finished_at": _now_iso(),
+                "result": None,
+                "error": str(exc),
+            },
+        )
+
+    except Exception as exc:
+        logger.exception(
+            "Unexpected background static KB load error namespace=%s",
+            namespace,
+        )
+
+        _set_static_kb_job(
+            namespace,
+            {
+                "status": "failed",
+                "finished_at": _now_iso(),
+                "result": None,
+                "error": str(exc),
+            },
+        )
+
 
 @router.post("/ingest-text")
 async def ingest_text(body: KBIngestTextRequest):
@@ -175,6 +289,7 @@ async def ingest_pdf(
             },
         ) from exc
 
+
 @router.post("/search")
 async def search_kb(body: KBSearchRequest):
     return {
@@ -187,40 +302,118 @@ async def search_kb(body: KBSearchRequest):
     }
 
 
-@router.post("/load-static")
-async def load_static_examples():
+@router.post(
+    "/load-static",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def load_static_examples(background_tasks: BackgroundTasks):
+    """Queue static KB loading for all discovered namespaces."""
     try:
-        return load_all_static_namespaces()
+        namespaces = [
+            source["value"]
+            for source in list_static_namespaces()
+        ]
 
     except StaticKBLoaderError as exc:
-        logger.exception("Static KB loading failed.")
+        logger.exception("Static KB source listing failed.")
 
         raise HTTPException(
             status_code=500,
             detail={
-                "code": "static_kb_loading_error",
+                "code": "static_kb_source_listing_error",
                 "message": str(exc),
             },
         ) from exc
 
+    queued = []
 
-@router.post("/load-static/{namespace}")
-async def load_static_example(namespace: str):
-    try:
-        return load_static_namespace(namespace)
+    for namespace in namespaces:
+        existing = _get_static_kb_job(namespace)
 
-    except StaticKBLoaderError as exc:
-        logger.exception("Static KB namespace loading failed.")
+        if existing and existing.get("status") in {"queued", "running"}:
+            queued.append(existing)
+            continue
 
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "code": "static_kb_namespace_loading_error",
+        _set_static_kb_job(
+            namespace,
+            {
                 "namespace": namespace,
-                "message": str(exc),
+                "status": "queued",
+                "queued_at": _now_iso(),
+                "started_at": None,
+                "finished_at": None,
+                "result": None,
+                "error": None,
             },
-        ) from exc
-    
+        )
+
+        background_tasks.add_task(_run_static_kb_load, namespace)
+
+        job = _get_static_kb_job(namespace)
+
+        if job is not None:
+            queued.append(job)
+
+    return {
+        "status": "queued",
+        "jobs": queued,
+    }
+
+
+@router.post(
+    "/load-static/{namespace}",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def load_static_example(
+    namespace: str,
+    background_tasks: BackgroundTasks,
+):
+    """Queue static KB loading for one namespace."""
+    existing = _get_static_kb_job(namespace)
+
+    if existing and existing.get("status") in {"queued", "running"}:
+        return existing
+
+    _set_static_kb_job(
+        namespace,
+        {
+            "namespace": namespace,
+            "status": "queued",
+            "queued_at": _now_iso(),
+            "started_at": None,
+            "finished_at": None,
+            "result": None,
+            "error": None,
+        },
+    )
+
+    background_tasks.add_task(_run_static_kb_load, namespace)
+
+    return _get_static_kb_job(namespace)
+
+
+@router.get("/static-status")
+def list_static_load_statuses():
+    """List static KB loading statuses."""
+    return {
+        "jobs": _list_static_kb_jobs(),
+    }
+
+
+@router.get("/static-status/{namespace}")
+def get_static_load_status(namespace: str):
+    """Get static KB loading status for one namespace."""
+    job = _get_static_kb_job(namespace)
+
+    if job is None:
+        return {
+            "namespace": namespace,
+            "status": "not_started",
+        }
+
+    return job
+
+
 @router.get("/static-sources")
 def list_static_sources():
     """List available static KB namespaces from S3 folders."""
