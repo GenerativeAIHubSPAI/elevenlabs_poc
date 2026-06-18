@@ -180,10 +180,6 @@ export default function App() {
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         userName={userName}
-        isAuthenticated={true}
-        authMode={authMode}
-        onLogin={login}
-        onLogout={handleLogout}
       />
 
       <main
