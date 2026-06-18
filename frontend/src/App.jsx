@@ -9,13 +9,7 @@ import {
 } from "./features/voice/index.js";
 import "./styles/main.css";
 import { fetchStaticKnowledgeSources } from "./services/api";
-import {
-  canUseCognitoLogin,
-  createGuestSession,
-  handleAuthCallback,
-  login,
-  logout,
-} from "./services/auth";
+
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -24,12 +18,9 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [muted, setMuted] = useState(false);
 
-  const [auth, setAuth] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
-
-  const userId = auth?.userId || "guest:anonymous";
-  const userName = auth?.userName || "Guest user";
-  const authMode = auth?.authMode || "guest";
+  const userId = "portal:user";
+  const userName = "Portal user";
+  const authMode = "authenticated";
 
   const [sessionId] = useState(() => crypto.randomUUID());
 
@@ -85,22 +76,10 @@ export default function App() {
     userId,
     userName,
     authMode,
-    authToken: auth?.id_token,
+    authToken: null,
     sessionId,
   });
 
-  useEffect(() => {
-    handleAuthCallback()
-      .then((resolvedAuth) => {
-        setAuth(resolvedAuth);
-        setAuthReady(true);
-      })
-      .catch((err) => {
-        console.error("Authentication failed", err);
-        setAuth(null);
-        setAuthReady(true);
-      });
-  }, []);
 
   useEffect(() => {
     visualizer.resizeCanvas();
@@ -161,19 +140,10 @@ export default function App() {
     };
   }, []);
 
-  const handleGuestSession = useCallback(() => {
-    const name =
-      window.prompt("Name for this demo session:", "Guest user") ||
-      "Guest user";
-
-    setAuth(createGuestSession(name));
-  }, []);
 
   const handleLogout = useCallback(() => {
     setMuted(false);
     conversation.stop();
-    logout(true);
-    setAuth(null);
     setMessages([]);
     setState("idle");
   }, [conversation]);
@@ -204,62 +174,13 @@ export default function App() {
     conversation.stop();
   }, [conversation, onMessage]);
 
-  if (!authReady) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-[#f7f9fb] text-[#4f5f76] font-bold">
-        Loading...
-      </div>
-    );
-  }
-
-  if (!auth) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-[#f7f9fb] px-6">
-        <div className="w-full max-w-md bg-white border border-[#c7c4d7] rounded-3xl shadow-xl p-8 space-y-6">
-          <div>
-            <h1 className="text-2xl font-bold text-[#4f5f76]">
-              VoiceCopilot AI
-            </h1>
-            <p className="text-sm text-[#565e74] mt-2">
-              Sign in with AWS or continue as a guest for demo access.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <button
-              type="button"
-              disabled={!canUseCognitoLogin()}
-              onClick={() =>
-                login().catch((err) => {
-                  console.error(err);
-                  alert(err.message);
-                })
-              }
-              className="w-full rounded-xl bg-[#4f5f76] text-white font-bold py-3 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Sign in with AWS
-            </button>
-
-            <button
-              type="button"
-              onClick={handleGuestSession}
-              className="w-full rounded-xl bg-white border border-[#4f5f76] text-[#4f5f76] font-bold py-3"
-            >
-              Continue as guest
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       <TopAppBar
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         userName={userName}
-        isAuthenticated={authMode === "authenticated"}
+        isAuthenticated={true}
         authMode={authMode}
         onLogin={login}
         onLogout={handleLogout}

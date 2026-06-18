@@ -107,6 +107,66 @@ def _clean_auth_mode(auth_mode: str | None) -> str:
 
     return value
 
+def _extract_name_from_transcript(transcript: str) -> str | None:
+    """Extract a simple user name from common introduction phrases."""
+    text = transcript.strip()
+    lowered = text.lower()
+
+    prefixes = [
+        "my name is ",
+        "i am ",
+        "i'm ",
+        "call me ",
+        "me llamo ",
+        "soy ",
+        "mi nombre es ",
+    ]
+
+    for prefix in prefixes:
+        if lowered.startswith(prefix):
+            name = text[len(prefix):].strip(" .,!?:;")
+            return name[:80] if name else None
+
+    return None
+
+def _looks_like_plain_name(transcript: str) -> bool:
+    """Return True when the transcript is probably just a short display name."""
+    text = transcript.strip(" .,!?:;")
+
+    if not text:
+        return False
+
+    words = text.split()
+
+    if len(words) > 3:
+        return False
+
+    blocked = {
+        "hello",
+        "hi",
+        "hey",
+        "hola",
+        "yes",
+        "no",
+        "thanks",
+        "thank you",
+        "ok",
+        "okay",
+        "what",
+        "why",
+        "how",
+        "que",
+        "qué",
+        "cuando",
+        "cuándo",
+        "como",
+        "cómo",
+        "gracias",
+        "sí",
+        "si",
+    }
+
+    return text.lower() not in blocked
 
 def _build_user_aware_system_prompt(
     namespace: str,
@@ -117,17 +177,34 @@ def _build_user_aware_system_prompt(
     """Add user identity context to the base business prompt."""
     base_prompt = resolve_system_prompt(namespace=namespace)
 
+    is_unknown_user = display_name.strip().lower() in {
+        "guest user",
+        "portal user",
+        "guest",
+        "anonymous",
+    }
+
+    name_instruction = (
+        "The user's name is not known yet. At the beginning of the conversation, "
+        "ask the user for their name in a short and natural way before continuing. "
+        "After the user gives a name, use it naturally when helpful. "
+        "Do not ask for the name again if the user already provided it in the conversation."
+        if is_unknown_user
+        else (
+            "Use the user's display name naturally when helpful, especially in greetings "
+            "or clarifying questions. Do not repeat the name in every sentence."
+        )
+    )
+
     return (
         f"{base_prompt}\n\n"
         "User identity context:\n"
         f"- user_id: {user_id}\n"
         f"- auth_mode: {auth_mode}\n"
         f"- display_name: {display_name}\n\n"
-        "Use the user's display name naturally when helpful, especially in greetings "
-        "or clarifying questions. Do not repeat the name in every sentence. "
-        "For guest users, treat the name as display-only and do not assume verified identity."
+        f"{name_instruction}\n"
+        "For portal/guest users, treat the name as display-only and do not assume verified identity."
     )
-
 
 async def _send_answer_audio(
     websocket: WebSocket,
@@ -235,6 +312,8 @@ async def voice_stream(websocket: WebSocket) -> None:
 
     current_tts_task: asyncio.Task | None = None
     current_turn_id: str | None = None
+    known_display_name = display_name
+    has_asked_name = False
 
     try:
         async with websockets.connect(
@@ -302,7 +381,7 @@ async def voice_stream(websocket: WebSocket) -> None:
                         break
 
             async def elevenlabs_to_browser() -> None:
-                nonlocal current_tts_task, current_turn_id
+                nonlocal current_tts_task, current_turn_id, known_display_name, has_asked_name
 
                 while True:
                     try:
@@ -335,6 +414,26 @@ async def voice_stream(websocket: WebSocket) -> None:
                         if not transcript:
                             continue
 
+                        is_unknown_user = known_display_name.strip().lower() in {
+                            "guest user",
+                            "portal user",
+                            "guest",
+                            "anonymous",
+                        }
+
+                        extracted_name = _extract_name_from_transcript(transcript)
+
+                        if (
+                            not extracted_name
+                            and has_asked_name
+                            and is_unknown_user
+                            and _looks_like_plain_name(transcript)
+                        ):
+                            extracted_name = transcript
+
+                        if extracted_name:
+                            known_display_name = _clean_display_name(extracted_name)
+
                         await websocket.send_json(
                             {
                                 "type": "user_committed_transcript",
@@ -361,7 +460,7 @@ async def voice_stream(websocket: WebSocket) -> None:
                         system_prompt = _build_user_aware_system_prompt(
                             namespace=namespace,
                             user_id=user_id,
-                            display_name=display_name,
+                            display_name=known_display_name,
                             auth_mode=auth_mode,
                         )
 
@@ -370,6 +469,9 @@ async def voice_stream(websocket: WebSocket) -> None:
                             question=transcript,
                             context_chunks=context,
                         )
+
+                        if is_unknown_user and not extracted_name:
+                            has_asked_name = True
 
                         await websocket.send_json(
                             {
