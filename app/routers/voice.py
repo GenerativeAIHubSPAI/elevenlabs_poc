@@ -24,6 +24,7 @@ from app.core.system_prompts import resolve_system_prompt
 from app.services.elevenlabs import ElevenLabsClient
 from app.services.kb import kb_search
 from app.services.llm import llm_client
+from app.services.memory import add_turn, format_history
 
 router = APIRouter()
 settings = get_settings()
@@ -279,6 +280,8 @@ async def voice_stream(websocket: WebSocket) -> None:
 
     user_id = websocket.query_params.get("user_id") or "guest:anonymous"
     user_name = websocket.query_params.get("user_name") or "Guest user"
+    session_id = websocket.query_params.get("session_id") or str(uuid.uuid4())
+    conversation_key = f"{user_id}:{session_id}"
     auth_mode = _clean_auth_mode(websocket.query_params.get("auth_mode"))
     token = websocket.query_params.get("token")
 
@@ -441,8 +444,19 @@ async def voice_stream(websocket: WebSocket) -> None:
                             }
                         )
 
+                        conversation_history = format_history(
+                            conversation_key=conversation_key,
+                            max_turns=8,
+                        )
+
+                        retrieval_query = (
+                            f"{conversation_history}\n\nCurrent question: {transcript}"
+                            if conversation_history
+                            else transcript
+                        )
+
                         matches = kb_search(
-                            query=transcript,
+                            query=retrieval_query,
                             namespace=namespace,
                             top_k=settings.KB_TOP_K,
                         )
@@ -463,11 +477,37 @@ async def voice_stream(websocket: WebSocket) -> None:
                             display_name=known_display_name,
                             auth_mode=auth_mode,
                         )
+                        system_prompt += (
+                            "\n\nConversation continuity rules:\n"
+                            "- Continue the current topic naturally.\n"
+                            "- Use facts the user already provided.\n"
+                            "- Do not ask again for information already present in the history.\n"
+                            "- Interpret short replies such as yes, no, or compare them "
+                            "using the preceding conversation.\n"
+                            "- Keep the selected product, property, destination, dates, "
+                            "values, and customer situation unless the user changes them."
+                        )
 
                         answer = await llm_client.answer(
                             system_prompt=system_prompt,
                             question=transcript,
                             context_chunks=context,
+                            conversation_history=conversation_history,
+                        )
+
+                        add_turn(
+                            conversation_key=conversation_key,
+                            role="user",
+                            content=transcript,
+                        )
+                        add_turn(
+                            conversation_key=conversation_key,
+                            role="assistant",
+                            content=answer,
+                            metadata={
+                                "sources": context,
+                                "namespace": namespace,
+                            },
                         )
 
                         if is_unknown_user and not extracted_name:

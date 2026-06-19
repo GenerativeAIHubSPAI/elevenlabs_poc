@@ -84,7 +84,7 @@ class KBIngestTextRequest(BaseModel):
     )
 
     knowledge_source: str = Field(
-        default="gachapon_distribution",
+        default="insurance_company",
         examples=[
             "cache",
             "insurance_company",
