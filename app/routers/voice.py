@@ -30,6 +30,13 @@ router = APIRouter()
 settings = get_settings()
 eleven = ElevenLabsClient()
 
+EARLY_TURN_COUNT = 3
+EARLY_RESPONSE_DELAY_SECONDS = 0.0
+EARLY_TRANSCRIPT_MERGE_SECONDS = 0.15
+NORMAL_TRANSCRIPT_MERGE_SECONDS = 1.0
+INCOMPLETE_TRANSCRIPT_MERGE_SECONDS = 1.6
+MEMORY_MAX_TURNS = 16
+
 # ─── Voice ID matrix ──────────────────────────────────────────────────────────
 # Key: (language_code, gender, tone) -> ElevenLabs voice_id
 VOICE_MAP: dict[tuple[str, str, str], str] = {
@@ -169,43 +176,145 @@ def _looks_like_plain_name(transcript: str) -> bool:
 
     return text.lower() not in blocked
 
+
+def _looks_incomplete(transcript: str) -> bool:
+    """Return True when a committed transcript probably continues."""
+    text = transcript.strip().lower()
+
+    if not text:
+        return False
+
+    if text.endswith(("-", "—", "...", "…", ",", ":")):
+        return True
+
+    last_word = text.strip(" .,!?:;").split()[-1]
+
+    return last_word in {
+        "a",
+        "al",
+        "and",
+        "because",
+        "but",
+        "con",
+        "de",
+        "del",
+        "el",
+        "en",
+        "for",
+        "la",
+        "las",
+        "los",
+        "o",
+        "para",
+        "pero",
+        "porque",
+        "que",
+        "the",
+        "to",
+        "un",
+        "una",
+        "y",
+    }
+
+
+def _transcript_merge_wait_seconds(
+    completed_turns: int,
+    transcript: str,
+) -> float:
+    """Return the quiet period required before processing a transcript."""
+    if _looks_incomplete(transcript):
+        return INCOMPLETE_TRANSCRIPT_MERGE_SECONDS
+
+    if completed_turns < EARLY_TURN_COUNT:
+        return EARLY_TRANSCRIPT_MERGE_SECONDS
+
+    return NORMAL_TRANSCRIPT_MERGE_SECONDS
+
+
+def _response_delay_seconds(completed_turns: int) -> float:
+    """Use immediate replies for the first turns and normal pacing afterwards."""
+    if completed_turns < EARLY_TURN_COUNT:
+        return EARLY_RESPONSE_DELAY_SECONDS
+
+    return max(0.0, settings.VOICE_RESPONSE_DELAY_SECONDS)
+
+
+
 def _build_user_aware_system_prompt(
     namespace: str,
     user_id: str,
     display_name: str,
     auth_mode: str,
 ) -> str:
-    """Add user identity context to the base business prompt."""
+    """Add identity, continuity, and process rules to the business prompt."""
     base_prompt = resolve_system_prompt(namespace=namespace)
 
-    is_unknown_user = display_name.strip().lower() in {
+    normalized_name = display_name.strip().lower()
+
+    is_unknown_user = normalized_name in {
         "guest user",
         "portal user",
         "guest",
         "anonymous",
     }
 
-    name_instruction = (
-        "The user's name is not known yet. At the beginning of the conversation, "
-        "ask the user for their name in a short and natural way before continuing. "
-        "After the user gives a name, use it naturally when helpful. "
-        "Do not ask for the name again if the user already provided it in the conversation."
-        if is_unknown_user
-        else (
-            "Use the user's display name naturally when helpful, especially in greetings "
-            "or clarifying questions. Do not repeat the name in every sentence."
+    if is_unknown_user:
+        name_instruction = (
+            "El nombre del usuario todavía no se conoce. "
+            "Pregúntalo una sola vez, de forma breve y natural. "
+            "Cuando el usuario lo proporcione, no vuelvas a preguntarlo."
         )
-    )
+    else:
+        name_instruction = (
+            "El nombre del usuario ya se conoce. "
+            "Úsalo solo cuando resulte natural o útil. "
+            "No lo repitas en cada respuesta."
+        )
+
+    session_rules = """
+                    Reglas obligatorias para esta conversación de voz:
+
+                    - Mantén internamente una lista de los datos ya recopilados y de los datos
+                    todavía pendientes.
+                    - No muestres esa lista interna al usuario salvo que solicite un resumen.
+                    - Revisa el mensaje actual y el historial antes de formular una pregunta.
+                    - Nunca vuelvas a pedir un dato que el usuario ya haya proporcionado.
+                    - Esto incluye nombre, documento de identidad, número de póliza, teléfono,
+                    dirección, fechas, cantidades, disponibilidad, destino, propiedad y cualquier
+                    otro dato relevante para el proceso.
+                    - Si el usuario proporciona varios datos juntos, registra todos y avanza a los
+                    siguientes requisitos pendientes.
+                    - No solicites confirmación de un dato salvo que sea ambiguo, incompleto o
+                    contradiga información anterior.
+                    - Formula como máximo dos preguntas relacionadas en una misma respuesta.
+                    - Solicita como máximo dos datos pendientes por turno.
+                    - No expliques todos los pasos restantes de un proceso de una sola vez.
+                    - Presenta únicamente el siguiente paso o los dos siguientes y espera la
+                    respuesta del usuario.
+                    - Continúa siempre desde el punto actual del proceso; no regreses a preguntas
+                    generales cuando el producto, incidencia o solicitud ya estén definidos.
+                    - Interpreta respuestas breves, pronombres y referencias utilizando el historial.
+                    - Mantén las respuestas normalmente por debajo de 80 palabras.
+                    - Si el usuario solicita una explicación extensa, divídela en partes breves.
+                    - No repitas el nombre del usuario en cada mensaje.
+                    - Si un dato pertenece a un sistema interno, no pidas al usuario que lo confirme.
+                    Indica que debe comprobarse internamente, pero no inventes el resultado ni
+                    afirmes que ya se ha comprobado si el sistema no lo confirma.
+                """
 
     return (
         f"{base_prompt}\n\n"
-        "User identity context:\n"
+        "Contexto de identidad de la sesión:\n"
         f"- user_id: {user_id}\n"
         f"- auth_mode: {auth_mode}\n"
         f"- display_name: {display_name}\n\n"
         f"{name_instruction}\n"
-        "For portal/guest users, treat the name as display-only and do not assume verified identity."
+        "Los nombres de usuarios invitados o del portal son solo nombres "
+        "mostrados y no representan una identidad verificada.\n\n"
+        f"{session_rules.strip()}"
     )
+
+
 
 async def _send_answer_audio(
     websocket: WebSocket,
@@ -317,6 +426,8 @@ async def voice_stream(websocket: WebSocket) -> None:
     current_turn_id: str | None = None
     known_display_name = display_name
     has_asked_name = False
+    assistant_turn_count = 0
+    transcript_queue: asyncio.Queue[str] = asyncio.Queue()
 
     try:
         async with websockets.connect(
@@ -383,40 +494,51 @@ async def voice_stream(websocket: WebSocket) -> None:
                         await websocket.close()
                         break
 
-            async def elevenlabs_to_browser() -> None:
-                nonlocal current_tts_task, current_turn_id, known_display_name, has_asked_name
+            async def collect_transcript(first_fragment: str) -> str:
+                """Merge committed STT fragments until the caller has been quiet."""
+                fragments = [first_fragment]
+
+                while True:
+                    combined = " ".join(fragment for fragment in fragments if fragment).strip()
+                    wait_seconds = _transcript_merge_wait_seconds(
+                        completed_turns=assistant_turn_count,
+                        transcript=combined,
+                    )
+
+                    try:
+                        next_fragment = await asyncio.wait_for(
+                            transcript_queue.get(),
+                            timeout=wait_seconds,
+                        )
+                    except asyncio.TimeoutError:
+                        return combined
+
+                    if next_fragment:
+                        fragments.append(next_fragment)
+
+            def drain_transcript_queue() -> list[str]:
+                """Drain transcript fragments already waiting in the queue."""
+                fragments: list[str] = []
 
                 while True:
                     try:
-                        raw = await stt_ws.recv()
-                    except websockets.exceptions.ConnectionClosed:
-                        return
+                        fragment = transcript_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        return fragments
 
-                    event = json.loads(raw)
-                    message_type = event.get("message_type")
+                    if fragment:
+                        fragments.append(fragment)
 
-                    if message_type == "session_started":
-                        await websocket.send_json(
-                            {
-                                "type": "stt_session_started",
-                                "config": event.get("config", {}),
-                            }
-                        )
+            async def committed_transcript_worker() -> None:
+                """Merge user fragments and process one stable conversational turn."""
+                nonlocal current_tts_task, current_turn_id
+                nonlocal known_display_name, has_asked_name, assistant_turn_count
 
-                    elif message_type == "partial_transcript":
-                        await websocket.send_json(
-                            {
-                                "type": "user_partial_transcript",
-                                "text": event.get("text", ""),
-                            }
-                        )
+                while True:
+                    first_fragment = await transcript_queue.get()
+                    transcript = await collect_transcript(first_fragment)
 
-                    elif message_type == "committed_transcript":
-                        transcript = event.get("text", "").strip()
-
-                        if not transcript:
-                            continue
-
+                    while transcript:
                         is_unknown_user = known_display_name.strip().lower() in {
                             "guest user",
                             "portal user",
@@ -434,19 +556,15 @@ async def voice_stream(websocket: WebSocket) -> None:
                         ):
                             extracted_name = transcript
 
-                        if extracted_name:
-                            known_display_name = _clean_display_name(extracted_name)
-
-                        await websocket.send_json(
-                            {
-                                "type": "user_committed_transcript",
-                                "text": transcript,
-                            }
+                        effective_display_name = (
+                            _clean_display_name(extracted_name)
+                            if extracted_name
+                            else known_display_name
                         )
 
                         conversation_history = format_history(
                             conversation_key=conversation_key,
-                            max_turns=8,
+                            max_turns=MEMORY_MAX_TURNS,
                         )
 
                         retrieval_query = (
@@ -474,18 +592,8 @@ async def voice_stream(websocket: WebSocket) -> None:
                         system_prompt = _build_user_aware_system_prompt(
                             namespace=namespace,
                             user_id=user_id,
-                            display_name=known_display_name,
+                            display_name=effective_display_name,
                             auth_mode=auth_mode,
-                        )
-                        system_prompt += (
-                            "\n\nConversation continuity rules:\n"
-                            "- Continue the current topic naturally.\n"
-                            "- Use facts the user already provided.\n"
-                            "- Do not ask again for information already present in the history.\n"
-                            "- Interpret short replies such as yes, no, or compare them "
-                            "using the preceding conversation.\n"
-                            "- Keep the selected product, property, destination, dates, "
-                            "values, and customer situation unless the user changes them."
                         )
 
                         answer = await llm_client.answer(
@@ -493,6 +601,40 @@ async def voice_stream(websocket: WebSocket) -> None:
                             question=transcript,
                             context_chunks=context,
                             conversation_history=conversation_history,
+                        )
+
+                        delay_seconds = _response_delay_seconds(assistant_turn_count)
+
+                        if delay_seconds > 0:
+                            await asyncio.sleep(delay_seconds)
+
+                        continuation_fragments = drain_transcript_queue()
+
+                        if continuation_fragments:
+                            combined = " ".join(
+                                [transcript, *continuation_fragments]
+                            ).strip()
+                            transcript = await collect_transcript(combined)
+                            continue
+
+                        if extracted_name:
+                            known_display_name = effective_display_name
+
+                        if is_unknown_user and not extracted_name:
+                            has_asked_name = True
+
+                        await websocket.send_json(
+                            {
+                                "type": "user_committed_transcript",
+                                "text": transcript,
+                            }
+                        )
+
+                        await websocket.send_json(
+                            {
+                                "type": "sources",
+                                "sources": context,
+                            }
                         )
 
                         add_turn(
@@ -510,26 +652,14 @@ async def voice_stream(websocket: WebSocket) -> None:
                             },
                         )
 
-                        if is_unknown_user and not extracted_name:
-                            has_asked_name = True
-
-                        await websocket.send_json(
-                            {
-                                "type": "sources",
-                                "sources": context,
-                            }
-                        )
-
                         if current_tts_task and not current_tts_task.done():
                             current_tts_task.cancel()
 
                             with contextlib.suppress(asyncio.CancelledError):
                                 await current_tts_task
 
-                        if settings.VOICE_RESPONSE_DELAY_SECONDS > 0:
-                            await asyncio.sleep(settings.VOICE_RESPONSE_DELAY_SECONDS)
-
                         current_turn_id = str(uuid.uuid4())
+                        assistant_turn_count += 1
 
                         current_tts_task = asyncio.create_task(
                             _send_answer_audio(
@@ -540,6 +670,67 @@ async def voice_stream(websocket: WebSocket) -> None:
                                 language_code=None,
                             )
                         )
+                        break
+
+            async def elevenlabs_to_browser() -> None:
+                nonlocal current_tts_task, current_turn_id, known_display_name, has_asked_name
+
+                while True:
+                    try:
+                        raw = await stt_ws.recv()
+                    except websockets.exceptions.ConnectionClosed:
+                        return
+
+                    event = json.loads(raw)
+                    message_type = event.get("message_type")
+
+                    if message_type == "session_started":
+                        await websocket.send_json(
+                            {
+                                "type": "stt_session_started",
+                                "config": event.get("config", {}),
+                            }
+                        )
+
+                    elif message_type == "partial_transcript":
+                        partial_text = event.get("text", "")
+
+                        if (
+                            partial_text.strip()
+                            and current_tts_task
+                            and not current_tts_task.done()
+                        ):
+                            current_tts_task.cancel()
+
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await current_tts_task
+
+                            current_tts_task = None
+                            current_turn_id = None
+
+                        await websocket.send_json(
+                            {
+                                "type": "user_partial_transcript",
+                                "text": partial_text,
+                            }
+                        )
+
+                    elif message_type == "committed_transcript":
+                        transcript = event.get("text", "").strip()
+
+                        if not transcript:
+                            continue
+
+                        if current_tts_task and not current_tts_task.done():
+                            current_tts_task.cancel()
+
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await current_tts_task
+
+                            current_tts_task = None
+                            current_turn_id = None
+
+                        await transcript_queue.put(transcript)
 
                     elif message_type and "error" in message_type:
                         await websocket.send_json(
@@ -549,10 +740,20 @@ async def voice_stream(websocket: WebSocket) -> None:
                             }
                         )
 
-            await asyncio.gather(
-                browser_to_elevenlabs(),
-                elevenlabs_to_browser(),
+            transcript_worker_task = asyncio.create_task(
+                committed_transcript_worker()
             )
+
+            try:
+                await asyncio.gather(
+                    browser_to_elevenlabs(),
+                    elevenlabs_to_browser(),
+                )
+            finally:
+                transcript_worker_task.cancel()
+
+                with contextlib.suppress(asyncio.CancelledError):
+                    await transcript_worker_task
 
     except WebSocketDisconnect:
         if current_tts_task and not current_tts_task.done():
