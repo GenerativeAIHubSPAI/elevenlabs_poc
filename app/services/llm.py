@@ -142,7 +142,8 @@ class LLMClient:
               da una bienvenida breve si encaja de manera natural y no has dado la bienvenida anteriormente, ofrece opciones útiles de ayuda según el contexto disponible de manera breve.\n
             - Si no hay contexto relevante y la pregunta es general, no hables de limitaciones internas; guía al usuario hacia una consulta concreta.\n
             - Si el usuario pregunta por un dato concreto y no aparece en el contexto ni en el historial, dilo de forma amable y ofrece el siguiente paso más útil.\n
-            - Prioriza una respuesta clara, servicial y accionable antes que una respuesta larga.\n
+            - Si el mensaje de sistema define un protocolo por pasos (por ejemplo, ante un problema o incidencia), síguelo de forma estricta: eso incluye no combinar varias preguntas en la misma respuesta aunque parezca más eficiente. Ser "accionable" en ese caso significa avanzar un solo paso claro, no resolverlo todo de una vez.\n
+            - Prioriza una respuesta clara, servicial y accionable antes que una respuesta larga, pero nunca a costa de romper un protocolo por pasos indicado en el mensaje de sistema.\n
             - intenta evitar fillers como "entiendo", "claro", "perfecto", "de acuerdo", "gracias por la información", 
               "es un placer ayudarte", "estoy aquí para ayudarte" y similares, a menos que encajen de forma natural en la respuesta.
             - No es necesario usar fillers en cada respuesta, y a veces es mejor omitirlos para sonar más directo y profesional.
