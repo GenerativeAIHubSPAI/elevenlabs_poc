@@ -126,7 +126,7 @@ const initials = getInitials(displayName);
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-[#191c1e]">How to use VoiceCopilot AI</h2>
+              <h2 className="text-lg font-bold text-[#191c1e]">How to use AI Voice Assistant</h2>
               <button
                 onClick={() => setHelpOpen(false)}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-[#565e74] hover:bg-[#f2f4f6] transition-colors"

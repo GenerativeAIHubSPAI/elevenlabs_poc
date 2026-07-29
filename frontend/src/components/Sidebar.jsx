@@ -37,7 +37,7 @@ export default function Sidebar({
             <span className="material-symbols-outlined">settings_voice</span>
           </div>
           <div className="flex-1">
-            <h1 className="text-[18px] font-bold text-[#4f5f76]">VoiceCopilot AI</h1>
+            <h1 className="text-[18px] font-bold text-[#4f5f76]">AI Voice Assistant</h1>
             <p className="text-[10px] text-[#565e74] uppercase tracking-wider">POC Monitoring Agent</p>
           </div>
           <button
