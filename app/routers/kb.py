@@ -20,6 +20,7 @@ from fastapi import (
     status,
 )
 
+from app.core.knowledge_sources import list_knowledge_source_options
 from app.schemas.requests import KBIngestTextRequest, KBSearchRequest
 from app.services.kb import (
     EmbeddingConfigurationError,
@@ -27,6 +28,7 @@ from app.services.kb import (
     KnowledgeBaseError,
     kb_ingest_text,
     kb_search,
+    kb_store,
 )
 from app.services.pdf_parser import extract_pdf_pages
 from app.services.static_kb_loader import (
@@ -425,19 +427,45 @@ def get_static_load_status(namespace: str):
 
 @router.get("/static-sources")
 def list_static_sources():
-    """List available static KB namespaces from S3 folders."""
+    """List the selectable static business topics.
+
+    Driven by the in-code registry, so the option list is byte-identical in every
+    environment and always contains only namespaces that the chat/voice flows
+    accept. The S3 listing is reported as diagnostics only: an unreachable or
+    differently-shaped bucket must not empty the selector nor fail the request,
+    which previously left the frontend with no options and no visible error.
+    """
+    sources = []
+
+    for option in list_knowledge_source_options():
+        chunks = len(kb_store.get(option["value"], []))
+
+        sources.append(
+            {
+                **option,
+                "chunks": chunks,
+                "loaded": chunks > 0,
+            }
+        )
+
+    discovery: dict[str, Any] = {
+        "ok": True,
+        "namespaces": [],
+        "error": None,
+    }
+
     try:
-        return {
-            "sources": list_static_namespaces(),
-        }
+        discovery["namespaces"] = [
+            source["value"] for source in list_static_namespaces()
+        ]
 
     except StaticKBLoaderError as exc:
-        logger.exception("Static KB source listing failed.")
+        logger.warning("Static KB discovery unavailable: %s", exc)
 
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "code": "static_kb_source_listing_error",
-                "message": str(exc),
-            },
-        ) from exc
+        discovery["ok"] = False
+        discovery["error"] = str(exc)
+
+    return {
+        "sources": sources,
+        "discovery": discovery,
+    }

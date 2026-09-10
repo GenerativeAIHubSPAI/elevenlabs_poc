@@ -28,14 +28,26 @@ function encodeWav(samples, sr) {
   return buf;
 }
 
+// The backend raises HTTPException with either a plain string detail or a
+// structured one ({ code, provider, message }). Passing the object straight to
+// Error() renders "[object Object]" in the UI, hiding the actual cause.
+function describeError(payload, status) {
+  const detail = payload?.detail;
+
+  if (typeof detail === "string" && detail) return detail;
+  if (typeof detail?.message === "string" && detail.message) return detail.message;
+
+  return `Error ${status}`;
+}
+
 export async function uploadFile(file, namespace = "default") {
   const form = new FormData();
   form.append("file", file);
   form.append("namespace", namespace);
   const res = await fetch(KB_INGEST_FILE_URL, { method: "POST", body: form });
   if (!res.ok) {
-    const detail = await res.json().then((d) => d.detail).catch(() => `Error ${res.status}`);
-    throw new Error(detail);
+    const payload = await res.json().catch(() => null);
+    throw new Error(describeError(payload, res.status));
   }
   return res.json();
 }
@@ -53,11 +65,28 @@ export async function sendAudio(samples, sr) {
 }
 
 export async function fetchStaticKnowledgeSources() {
-  const res = await fetch(`${API_PREFIX}/kb/static-sources`);
+  const url = `${API_PREFIX}/kb/static-sources`;
+  const res = await fetch(url);
 
   if (!res.ok) {
-    throw new Error(`Failed to load static KB sources: ${res.status}: ${await res.text()}`);
+    const detail = (await res.text().catch(() => "")).slice(0, 200);
+    throw new Error(`GET ${url} -> ${res.status}. ${detail}`);
   }
 
-  return res.json();
+  // res.ok is not enough: when the deployed path prefix does not match the one
+  // baked into this bundle, nginx/CloudFront answers the SPA's index.html with a
+  // 200 and the request never reaches the backend. Say so instead of surfacing an
+  // opaque JSON parse error.
+  const body = await res.text();
+
+  try {
+    return JSON.parse(body);
+  } catch {
+    const contentType = res.headers.get("content-type") ?? "an unknown content type";
+    throw new Error(
+      `GET ${url} returned ${contentType} instead of JSON, so it never reached the ` +
+        `backend. Check that the runtime path prefix matches the build. ` +
+        `Body starts with: ${body.slice(0, 60)}`
+    );
+  }
 }

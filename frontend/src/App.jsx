@@ -28,19 +28,42 @@ export default function App() {
     idioma: "es",
     sexo: "hombre",
     tono: "cercano",
-    knowledgeSource: "gachapon_distribution",
+    knowledgeSource: "cache",
   });
 
-  const [knowledgeSources, setKnowledgeSources] = useState([
-    { value: "cache", label: "Uploaded PDFs" },
-  ]);
-
-  const activeNamespace =
-    config.knowledgeSource === "cache"
-      ? `cache:${sessionId}`
-      : config.knowledgeSource;
+  const [knowledgeSources, setKnowledgeSources] = useState([]);
+  const [sourcesError, setSourcesError] = useState(null);
+  const [uploadedDocs, setUploadedDocs] = useState([]);
 
   const uploadNamespace = `cache:${sessionId}`;
+
+  // Before anything is uploaded the entry is an invitation; afterwards it names the
+  // source it actually is.
+  const uploadOptionLabel =
+    uploadedDocs.length === 0
+      ? "Upload a PDF"
+      : uploadedDocs.length === 1
+      ? "Uploaded PDF"
+      : `Uploaded PDFs (${uploadedDocs.length})`;
+
+  // Always offered and always first: it is the default source, and it is the only
+  // one left when no static topic could be loaded.
+  const sourceOptions = [
+    { value: "cache", label: uploadOptionLabel },
+    ...knowledgeSources,
+  ];
+
+  // Never let the selector hold a value with no matching option: a controlled
+  // <select> in that state renders blank while the app keeps reporting a source
+  // the user cannot see, which is how the upload panel used to go missing.
+  const selectedSource = sourceOptions.some(
+    (option) => option.value === config.knowledgeSource
+  )
+    ? config.knowledgeSource
+    : sourceOptions[0]?.value ?? "";
+
+  const activeNamespace =
+    selectedSource === "cache" ? uploadNamespace : selectedSource;
 
   const canvasRef = useRef(null);
   const liveBgRef = useRef(null);
@@ -62,6 +85,14 @@ export default function App() {
 
   const handleConfigChange = useCallback((key, value) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handleUploaded = useCallback((doc) => {
+    setUploadedDocs((prev) => [...prev, doc]);
+
+    // Uploading is only reachable while "cache" is selected, so this keeps the
+    // invariant rather than switching: a fresh upload is always the active source.
+    setConfig((prev) => ({ ...prev, knowledgeSource: "cache" }));
   }, []);
 
   const conversation = useConversationStreaming({
@@ -104,32 +135,37 @@ export default function App() {
     async function loadKnowledgeSources() {
       try {
         const data = await fetchStaticKnowledgeSources();
-        const staticSources = data.sources ?? [];
 
         if (cancelled) return;
 
-        setKnowledgeSources([
-          ...staticSources,
-          { value: "cache", label: "Uploaded PDFs" },
-        ]);
+        const topics = data.sources ?? [];
+
+        setKnowledgeSources(topics);
+        setSourcesError(null);
 
         setConfig((prev) => {
-          const currentSourceExists =
-            staticSources.some(
-              (source) => source.value === prev.knowledgeSource
-            ) || prev.knowledgeSource === "cache";
+          if (prev.knowledgeSource === "cache") {
+            return prev;
+          }
 
-          if (currentSourceExists) {
+          const stillExists = topics.some(
+            (topic) => topic.value === prev.knowledgeSource
+          );
+
+          if (stillExists) {
             return prev;
           }
 
           return {
             ...prev,
-            knowledgeSource: staticSources[0]?.value ?? "cache",
+            knowledgeSource: topics[0]?.value ?? prev.knowledgeSource,
           };
         });
       } catch (err) {
-        console.error("Failed to load static KB sources", err);
+        if (cancelled) return;
+
+        console.error("Failed to load knowledge sources", err);
+        setSourcesError(err.message);
       }
     }
 
@@ -140,6 +176,35 @@ export default function App() {
     };
   }, []);
 
+
+  // The active namespace travels in the WebSocket URL and is captured when start()
+  // runs, so a live conversation keeps querying the source it was opened with.
+  // Reconnect when the source changes -- including right after an upload switches
+  // to the freshly uploaded PDF -- instead of silently answering from the old one.
+  const activeNamespaceRef = useRef(activeNamespace);
+
+  useEffect(() => {
+    const previous = activeNamespaceRef.current;
+    activeNamespaceRef.current = activeNamespace;
+
+    if (previous === activeNamespace || !activeNamespace) return;
+    if (!conversation.isRunning()) return;
+
+    conversation.stop();
+    setState("idle");
+
+    conversation.start().catch((err) => {
+      console.error("Failed to reconnect after a source change", err);
+      onMessage("error", err?.message ?? "Failed to apply the new source.");
+      setState("idle");
+    });
+  }, [
+    activeNamespace,
+    conversation.isRunning,
+    conversation.start,
+    conversation.stop,
+    onMessage,
+  ]);
 
   const handleLogout = useCallback(() => {
     setMuted(false);
@@ -270,7 +335,11 @@ export default function App() {
         onToggle={() => setSidebarOpen((v) => !v)}
         config={config}
         onConfigChange={handleConfigChange}
-        knowledgeSources={knowledgeSources}
+        knowledgeSources={sourceOptions}
+        selectedSource={selectedSource}
+        sourcesError={sourcesError}
+        uploadedDocs={uploadedDocs}
+        onUploaded={handleUploaded}
         sessionId={sessionId}
         uploadNamespace={uploadNamespace}
       />

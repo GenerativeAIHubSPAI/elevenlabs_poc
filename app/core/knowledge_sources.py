@@ -29,6 +29,28 @@ STATIC_BUSINESS_EXAMPLES = {
 }
 
 
+def list_knowledge_source_options() -> list[dict[str, str]]:
+    """Return the selectable static business topics, sorted by label.
+
+    The registry above -- not the S3 layout -- is the source of truth for what the
+    user can pick: it is identical in every environment and it is exactly what
+    resolve_knowledge_namespaces accepts. Deriving the options from S3 instead made
+    the list depend on bucket contents and reachability.
+    """
+    options = [
+        {
+            "value": str(source),
+            "label": example["label"],
+            "description": example["description"],
+        }
+        for source, example in STATIC_BUSINESS_EXAMPLES.items()
+    ]
+
+    options.sort(key=lambda option: option["label"])
+
+    return options
+
+
 def build_cache_namespace(session_id: str) -> str:
     return f"cache:{session_id}"
 
