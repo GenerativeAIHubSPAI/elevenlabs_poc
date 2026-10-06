@@ -28,9 +28,18 @@ async def config():
             "stt_sample_rate": settings.ELEVENLABS_STT_SAMPLE_RATE,
         },
         "llm": {
+            "provider": settings.LLM_PROVIDER,
             "base_url": settings.LLM_BASE_URL,
-            "model": settings.LLM_MODEL,
-            "configured": bool(settings.LLM_API_KEY),
+            "model": (
+                settings.BEDROCK_MODEL_ID
+                if settings.LLM_PROVIDER == "bedrock"
+                else settings.LLM_MODEL
+            ),
+            "configured": bool(
+                settings.AWS_BEARER_TOKEN_BEDROCK
+                if settings.LLM_PROVIDER == "bedrock"
+                else settings.LLM_API_KEY
+            ),
         },
         "kb": {
             "default_namespace": settings.KB_DEFAULT_NAMESPACE,

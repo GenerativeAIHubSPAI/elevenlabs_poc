@@ -32,6 +32,10 @@ settings = get_settings()
 
 kb_store: dict[str, list[dict[str, Any]]] = {}
 
+# Full (unchunked) text of every ingested page, so small knowledge bases such as
+# a single guide can be passed to the LLM in full instead of as retrieved chunks.
+kb_documents: dict[str, list[dict[str, Any]]] = {}
+
 logger = logging.getLogger(__name__)
 
 
@@ -220,6 +224,15 @@ def kb_ingest_text(
     if namespace not in kb_store:
         kb_store[namespace] = []
 
+    kb_documents.setdefault(namespace, []).append(
+        {
+            "title": title,
+            "source_name": source_name,
+            "page": page,
+            "text": text,
+        }
+    )
+
     chunks = chunk_text(text)
     saved = []
 
@@ -295,6 +308,43 @@ def kb_search_many(
     results.sort(key=lambda item: item["score"], reverse=True)
 
     return results[:top_k]
+
+def kb_full_text(namespaces: list[str]) -> str | None:
+    """Return the full text of the namespaces if it fits KB_FULL_CONTEXT_MAX_CHARS.
+
+    Returns None when full-context mode is disabled, the namespaces are empty, or
+    the content is too large; callers then fall back to chunk retrieval.
+    """
+    max_chars = settings.KB_FULL_CONTEXT_MAX_CHARS
+
+    if max_chars <= 0:
+        return None
+
+    sections: list[str] = []
+    current_title = None
+
+    for namespace in namespaces:
+        for page in kb_documents.get(namespace, []):
+            text = (page.get("text") or "").strip()
+            if not text:
+                continue
+
+            if page["title"] != current_title:
+                current_title = page["title"]
+                sections.append(f"=== Documento: {current_title} ===")
+
+            if page.get("page"):
+                sections.append(f"[Página {page['page']}]")
+
+            sections.append(text)
+
+    full_text = "\n\n".join(sections)
+
+    if not full_text or len(full_text) > max_chars:
+        return None
+
+    return full_text
+
 
 def kb_list(namespace: str, limit: int = 20):
     chunks = kb_store.get(namespace, [])[:limit]

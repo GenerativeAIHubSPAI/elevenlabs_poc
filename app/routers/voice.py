@@ -22,7 +22,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.core.config import get_settings
 from app.core.system_prompts import resolve_system_prompt
 from app.services.elevenlabs import ElevenLabsClient
-from app.services.kb import kb_search
+from app.services.kb import kb_full_text, kb_search
 from app.services.llm import llm_client
 from app.services.memory import add_turn, format_history
 
@@ -573,7 +573,9 @@ async def voice_stream(websocket: WebSocket) -> None:
                             else transcript
                         )
 
-                        matches = kb_search(
+                        full_guide = kb_full_text([namespace])
+
+                        matches = [] if full_guide else kb_search(
                             query=retrieval_query,
                             namespace=namespace,
                             top_k=settings.KB_TOP_K,
@@ -601,6 +603,8 @@ async def voice_stream(websocket: WebSocket) -> None:
                             question=transcript,
                             context_chunks=context,
                             conversation_history=conversation_history,
+                            spoken=True,
+                            full_guide=full_guide,
                         )
 
                         delay_seconds = _response_delay_seconds(assistant_turn_count)

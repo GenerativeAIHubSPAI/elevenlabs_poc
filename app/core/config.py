@@ -46,12 +46,15 @@ class Settings(BaseSettings):
     # Bedrock
     AWS_REGION: str = "eu-west-3"
     AWS_BEARER_TOKEN_BEDROCK: str | None = None
-    BEDROCK_MODEL_ID: str = "amazon.nova-pro-v1:0"
+    BEDROCK_MODEL_ID: str = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
     BEDROCK_MAX_TOKENS: int = 700
-    BEDROCK_TEMPERATURE: float = 0.2
+    BEDROCK_TEMPERATURE: float = 0.0
 
     BEDROCK_EMBEDDING_MODEL_ID: str = "amazon.titan-embed-text-v2:0"
     BEDROCK_EMBEDDING_DIMENSIONS: int = 1024
+
+    # LLM provider used for chat answers: "bedrock" or "openai"
+    LLM_PROVIDER: str = "bedrock"
 
     # LLM - Azure/OpenAI Responses API
     LLM_API_KEY: str | None = None
@@ -68,6 +71,9 @@ class Settings(BaseSettings):
     KB_CHUNK_SIZE: int = 500
     KB_CHUNK_OVERLAP: int = 80
     KB_TOP_K: int = 4
+    # Knowledge bases up to this size (chars, ~30k tokens) are sent to the LLM in
+    # full, with prompt caching, instead of as retrieved chunks. 0 disables it.
+    KB_FULL_CONTEXT_MAX_CHARS: int = 120000
 
     # Static business examples
     KB_STATIC_BUCKET: str | None = None

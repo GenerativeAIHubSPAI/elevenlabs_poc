@@ -146,9 +146,15 @@ ELEVENLABS_STT_AUDIO_FORMAT=pcm_16000
 ELEVENLABS_STT_SAMPLE_RATE=16000
 
 # ==============================================================================
-# LLM - OpenAI Responses API
+# LLM provider: bedrock (default, Claude Haiku 4.5) or openai
 # ==============================================================================
 
+LLM_PROVIDER=bedrock
+BEDROCK_MODEL_ID=eu.anthropic.claude-haiku-4-5-20251001-v1:0
+BEDROCK_MAX_TOKENS=700
+BEDROCK_TEMPERATURE=0.0
+
+# Only used when LLM_PROVIDER=openai
 LLM_API_KEY=your_openai_api_key
 LLM_BASE_URL=https://api.openai.com/v1/responses
 LLM_MODEL=gpt-4.1-mini
@@ -156,13 +162,17 @@ LLM_MAX_OUTPUT_TOKENS=700
 LLM_TEMPERATURE=0.2
 
 # ==============================================================================
-# Optional Bedrock Embeddings
+# AWS Bedrock (LLM and embeddings)
 # ==============================================================================
 
 AWS_REGION=eu-west-3
 AWS_BEARER_TOKEN_BEDROCK=your_bedrock_bearer_token
 BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
 BEDROCK_EMBEDDING_DIMENSIONS=1024
+
+# Knowledge bases up to this many characters are sent to the LLM in full
+# (with prompt caching) instead of as retrieved chunks. 0 disables it.
+KB_FULL_CONTEXT_MAX_CHARS=120000
 
 # ==============================================================================
 # Application

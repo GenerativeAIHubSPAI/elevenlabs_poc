@@ -21,18 +21,26 @@ ELEVENLABS_API_KEY=your_elevenlabs_api_key
 ELEVENLABS_VOICE_ID=your_default_voice_id
 ELEVENLABS_DEFAULT_VOICE_ID=your_default_voice_id
 
+LLM_PROVIDER=bedrock
+BEDROCK_MODEL_ID=eu.anthropic.claude-haiku-4-5-20251001-v1:0
+AWS_REGION=eu-west-3
+AWS_BEARER_TOKEN_BEDROCK=your_bedrock_bearer_token
+```
+
+Only needed with `LLM_PROVIDER=openai`:
+
+```env
 LLM_API_KEY=your_openai_api_key
 LLM_BASE_URL=https://api.openai.com/v1/responses
 LLM_MODEL=gpt-4.1-mini
 ```
 
-Optional embeddings variables:
+Embeddings and full-guide mode:
 
 ```env
-AWS_REGION=eu-west-3
-AWS_BEARER_TOKEN_BEDROCK=your_bedrock_bearer_token
 BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
 BEDROCK_EMBEDDING_DIMENSIONS=1024
+KB_FULL_CONTEXT_MAX_CHARS=120000
 ```
 
 ## Docker Compose
