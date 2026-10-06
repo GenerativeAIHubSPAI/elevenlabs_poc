@@ -18,7 +18,7 @@ from websockets import asyncio
 from app.core.system_prompts import resolve_system_prompt
 from app.core.config import get_settings
 from app.services.elevenlabs import ElevenLabsClient
-from app.services.kb import kb_search
+from app.services.kb import kb_full_text, kb_search
 from app.services.llm import llm_client
 
 router = APIRouter()
@@ -104,7 +104,9 @@ async def voice_turn(
             },
         )
 
-    matches = kb_search(
+    full_guide = kb_full_text([namespace])
+
+    matches = [] if full_guide else kb_search(
         query=transcript,
         namespace=namespace,
         top_k=top_k,
@@ -124,6 +126,8 @@ async def voice_turn(
         system_prompt=resolve_system_prompt(namespace=namespace),
         question=transcript,
         context_chunks=context,
+        spoken=True,
+        full_guide=full_guide,
     )
     if settings.VOICE_RESPONSE_DELAY_SECONDS > 0:
         await asyncio.sleep(settings.VOICE_RESPONSE_DELAY_SECONDS)

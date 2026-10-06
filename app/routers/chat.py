@@ -13,7 +13,7 @@ from app.core.system_prompts import resolve_system_prompt
 from app.services.llm import llm_client
 from app.services.memory import add_turn, format_history
 from app.core.knowledge_sources import resolve_knowledge_namespaces
-from app.services.kb import kb_search_many
+from app.services.kb import kb_full_text, kb_search_many
 
 
 router = APIRouter()
@@ -52,7 +52,9 @@ async def ask(body: ChatRequest):
             },
         ) from exc
 
-    matches = kb_search_many(
+    full_guide = kb_full_text(namespaces)
+
+    matches = [] if full_guide else kb_search_many(
         query=retrieval_query,
         namespaces=namespaces,
         top_k=body.top_k,
@@ -84,6 +86,7 @@ async def ask(body: ChatRequest):
         question=body.question,
         context_chunks=context,
         conversation_history=conversation_history,
+        full_guide=full_guide,
     )
 
     add_turn(
