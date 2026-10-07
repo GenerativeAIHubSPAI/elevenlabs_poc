@@ -222,6 +222,13 @@ export function useConversationStreaming({
 
         case "error":
           onMessage("error", msg.message ?? "Unknown server error");
+
+          // A failed turn gets no assistant reply, so nothing else would leave
+          // "processing": without this the UI waits forever.
+          if (isActiveRef.current && !isReplyingRef.current) {
+            onStateChange("active");
+          }
+
           break;
 
         default:

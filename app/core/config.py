@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     # Knowledge bases up to this size (chars, ~30k tokens) are sent to the LLM in
     # full, with prompt caching, instead of as retrieved chunks. 0 disables it.
     KB_FULL_CONTEXT_MAX_CHARS: int = 120000
+    # Parallel Bedrock embedding requests, shared by every ingestion in the process.
+    KB_EMBEDDING_CONCURRENCY: int = 8
 
     # Static business examples
     KB_STATIC_BUCKET: str | None = None

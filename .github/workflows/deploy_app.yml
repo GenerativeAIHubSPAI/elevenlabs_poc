@@ -69,9 +69,25 @@ jobs:
         run: |
           aws ecs describe-task-definition --task-definition ${{ env.TASK_DEFINITION_NAME }} --query taskDefinition > task-definition.json
 
+      # Also sets the container health check, so it is versioned here rather than
+      # edited by hand in the console. /usr/local/bin/healthcheck comes from
+      # Dockerfile.aws and goes through nginx to uvicorn.
       - name: Clean task definition
         run: |
-          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .enableFaultInjection)' task-definition.json > cleaned-task-definition.json
+          jq --arg name "$CONTAINER_NAME" '
+            del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .enableFaultInjection)
+            | .containerDefinitions |= map(
+                if .name == $name then
+                  .healthCheck = {
+                    command: ["CMD", "/usr/local/bin/healthcheck"],
+                    interval: 15,
+                    timeout: 5,
+                    retries: 3,
+                    startPeriod: 30
+                  }
+                else . end
+              )
+          ' task-definition.json > cleaned-task-definition.json
 
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
@@ -81,6 +97,20 @@ jobs:
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
+      # Before the deploy, not after: with desiredCount 0 the stability wait below
+      # succeeds instantly with no task running.
+      - name: Ensure the service runs a task
+        run: |
+          DESIRED=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --query 'services[0].desiredCount' --output text)
+          if [ "$DESIRED" -eq "0" ]; then
+            echo "Service desired count is 0. Updating to 1..."
+            aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --desired-count 1 > /dev/null
+          fi
+
+      # Stability means the new task passed the container and ALB health checks
+      # and the old one drained -- that is the deployment check. The former
+      # public-IP lookup could pick the old task, and failed the run when tasks
+      # have no public IP even though the deploy had succeeded.
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
@@ -88,53 +118,14 @@ jobs:
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
+          wait-for-minutes: 15
           force-new-deployment: true
 
-      - name: Get ECS Task Public IP
+      - name: Show ECS service events
+        if: failure()
         run: |
-          echo "Verifying service configuration..."
+          aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --query 'services[0].events[0:10].[createdAt,message]' --output table
 
-          DESIRED=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].desiredCount' --output text)
-          if [ "$DESIRED" -eq "0" ]; then
-            echo "Service desired count is 0. Updating to 1..."
-            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --desired-count 1
-          fi
-
-          MAX_RETRIES=15
-          PUBLIC_IP=""
-
-          echo "Searching for the running task IP..."
-          for ((i=1; i<=MAX_RETRIES; i++)); do
-            TASK_ARN=$(aws ecs list-tasks --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --desired-status RUNNING --query 'taskArns[0]' --output text)
-
-            if [ "$TASK_ARN" != "None" ] && [ -n "$TASK_ARN" ]; then
-              ENI_ID=$(aws ecs describe-tasks --cluster ${{ env.ECS_CLUSTER }} --tasks $TASK_ARN --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
-
-              if [ "$ENI_ID" != "None" ] && [ -n "$ENI_ID" ]; then
-                PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids $ENI_ID --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
-
-                if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-                  echo "------------------------------------------------------"
-                  echo "DEPLOYMENT SUCCESSFUL"
-                  echo "Your application is running at: http://$PUBLIC_IP"
-                  echo "------------------------------------------------------"
-                  break
-                fi
-              fi
-            fi
-
-            echo "Attempt $i/$MAX_RETRIES: Task not ready. Checking again in 20s..."
-            sleep 20
-          done
-          
-          if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-            exit 0
-          fi
-
-          echo "Error: Timed out waiting for a running task with a Public IP."
-          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].events[0:3].message' --output text
-          exit 1
-      
       - name: Invalidate CloudFront cache
         run: |
           aws cloudfront create-invalidation \

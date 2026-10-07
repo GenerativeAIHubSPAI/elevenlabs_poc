@@ -6,9 +6,8 @@ extracts PDF text, delegates chunk creation and embedding to the knowledge-base
 service, and returns ingestion/search results for downstream chat and voice flows.
 """
 
-from datetime import UTC, datetime
-from threading import Lock, Thread
 from typing import Any
+import asyncio
 import logging
 
 from fastapi import (
@@ -20,143 +19,37 @@ from fastapi import (
     status,
 )
 
+from app.core.knowledge_sources import list_knowledge_source_options
 from app.schemas.requests import KBIngestTextRequest, KBSearchRequest
 from app.services.kb import (
     EmbeddingConfigurationError,
     EmbeddingProviderError,
     KnowledgeBaseError,
+    kb_ingest_pages,
     kb_ingest_text,
     kb_search,
+    kb_store,
 )
 from app.services.pdf_parser import extract_pdf_pages
+from app.services.static_kb_jobs import (
+    get_static_kb_job,
+    get_static_kb_status,
+    list_static_kb_jobs,
+    queue_static_kb_load,
+)
 from app.services.static_kb_loader import (
     StaticKBLoaderError,
     list_static_namespaces,
-    load_static_namespace,
 )
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-_static_kb_jobs: dict[str, dict[str, Any]] = {}
-_static_kb_jobs_lock = Lock()
-
-
-def _now_iso() -> str:
-    """Return the current UTC time as an ISO-8601 string."""
-    return datetime.now(UTC).isoformat()
-
-
-def _set_static_kb_job(namespace: str, payload: dict[str, Any]) -> None:
-    """Store static KB load job status in memory."""
-    with _static_kb_jobs_lock:
-        current = _static_kb_jobs.get(namespace, {})
-        _static_kb_jobs[namespace] = {
-            **current,
-            **payload,
-            "updated_at": _now_iso(),
-        }
-
-
-def _get_static_kb_job(namespace: str) -> dict[str, Any] | None:
-    """Get static KB load job status."""
-    with _static_kb_jobs_lock:
-        job = _static_kb_jobs.get(namespace)
-
-        if job is None:
-            return None
-
-        return dict(job)
-
-
-def _list_static_kb_jobs() -> list[dict[str, Any]]:
-    """List static KB load job statuses."""
-    with _static_kb_jobs_lock:
-        return [dict(job) for job in _static_kb_jobs.values()]
-
-
-def _start_static_kb_thread(namespace: str) -> None:
-    """Start a daemon thread to load a static KB namespace."""
-    thread = Thread(
-        target=_run_static_kb_load,
-        args=(namespace,),
-        daemon=True,
-    )
-    thread.start()
-
-
-def _run_static_kb_load(namespace: str) -> None:
-    """Load one static KB namespace in the background."""
-    _set_static_kb_job(
-        namespace,
-        {
-            "namespace": namespace,
-            "status": "running",
-            "started_at": _now_iso(),
-            "finished_at": None,
-            "result": None,
-            "error": None,
-        },
-    )
-
-    try:
-        logger.info("Background static KB load started namespace=%s", namespace)
-
-        result = load_static_namespace(namespace)
-
-        _set_static_kb_job(
-            namespace,
-            {
-                "status": "succeeded",
-                "finished_at": _now_iso(),
-                "result": result,
-                "error": None,
-            },
-        )
-
-        logger.info(
-            "Background static KB load succeeded namespace=%s result=%s",
-            namespace,
-            result,
-        )
-
-    except StaticKBLoaderError as exc:
-        logger.exception(
-            "Background static KB load failed namespace=%s",
-            namespace,
-        )
-
-        _set_static_kb_job(
-            namespace,
-            {
-                "status": "failed",
-                "finished_at": _now_iso(),
-                "result": None,
-                "error": str(exc),
-            },
-        )
-
-    except Exception as exc:
-        logger.exception(
-            "Unexpected background static KB load error namespace=%s",
-            namespace,
-        )
-
-        _set_static_kb_job(
-            namespace,
-            {
-                "status": "failed",
-                "finished_at": _now_iso(),
-                "result": None,
-                "error": str(exc),
-            },
-        )
-
-
 @router.post("/ingest-text")
 async def ingest_text(body: KBIngestTextRequest):
     """Ingest plain text into the knowledge base."""
-    saved = kb_ingest_text(
+    saved = await asyncio.to_thread(
+        kb_ingest_text,
         title=body.title,
         text=body.text,
         namespace=body.namespace,
@@ -214,8 +107,11 @@ async def ingest_pdf(
 
     doc_title = title or file.filename or "uploaded_pdf"
 
+    # Parsing and embedding are blocking; running them inline on the event loop
+    # froze the single uvicorn worker -- voice streams and every other request
+    # included -- for as long as the upload took.
     try:
-        pages = extract_pdf_pages(content)
+        pages = await asyncio.to_thread(extract_pdf_pages, content)
 
         if not pages:
             raise HTTPException(
@@ -229,18 +125,14 @@ async def ingest_pdf(
                 },
             )
 
-        all_saved = []
-
-        for page in pages:
-            saved = kb_ingest_text(
-                title=doc_title,
-                text=page["text"],
-                namespace=namespace,
-                source_type="pdf",
-                source_name=file.filename,
-                page=page["page"],
-            )
-            all_saved.extend(saved)
+        all_saved = await asyncio.to_thread(
+            kb_ingest_pages,
+            title=doc_title,
+            pages=pages,
+            namespace=namespace,
+            source_type="pdf",
+            source_name=file.filename,
+        )
 
         return {
             "namespace": namespace,
@@ -306,7 +198,8 @@ async def search_kb(body: KBSearchRequest):
     """Search the knowledge base."""
     return {
         "namespace": body.namespace,
-        "results": kb_search(
+        "results": await asyncio.to_thread(
+            kb_search,
             query=body.query,
             namespace=body.namespace,
             top_k=body.top_k,
@@ -337,34 +230,11 @@ def load_static_examples():
             },
         ) from exc
 
-    queued = []
-
-    for namespace in namespaces:
-        existing = _get_static_kb_job(namespace)
-
-        if existing and existing.get("status") in {"queued", "running"}:
-            queued.append(existing)
-            continue
-
-        _set_static_kb_job(
-            namespace,
-            {
-                "namespace": namespace,
-                "status": "queued",
-                "queued_at": _now_iso(),
-                "started_at": None,
-                "finished_at": None,
-                "result": None,
-                "error": None,
-            },
-        )
-
-        _start_static_kb_thread(namespace)
-
-        job = _get_static_kb_job(namespace)
-
-        if job is not None:
-            queued.append(job)
+    queued = [
+        job
+        for job in (queue_static_kb_load(namespace) for namespace in namespaces)
+        if job is not None
+    ]
 
     return {
         "status": "queued",
@@ -378,41 +248,21 @@ def load_static_examples():
 )
 def load_static_example(namespace: str):
     """Queue static KB loading for one namespace."""
-    existing = _get_static_kb_job(namespace)
-
-    if existing and existing.get("status") in {"queued", "running"}:
-        return existing
-
-    _set_static_kb_job(
-        namespace,
-        {
-            "namespace": namespace,
-            "status": "queued",
-            "queued_at": _now_iso(),
-            "started_at": None,
-            "finished_at": None,
-            "result": None,
-            "error": None,
-        },
-    )
-
-    _start_static_kb_thread(namespace)
-
-    return _get_static_kb_job(namespace)
+    return queue_static_kb_load(namespace)
 
 
 @router.get("/static-status")
 def list_static_load_statuses():
     """List static KB loading statuses."""
     return {
-        "jobs": _list_static_kb_jobs(),
+        "jobs": list_static_kb_jobs(),
     }
 
 
 @router.get("/static-status/{namespace}")
 def get_static_load_status(namespace: str):
     """Get static KB loading status for one namespace."""
-    job = _get_static_kb_job(namespace)
+    job = get_static_kb_job(namespace)
 
     if job is None:
         return {
@@ -425,19 +275,49 @@ def get_static_load_status(namespace: str):
 
 @router.get("/static-sources")
 def list_static_sources():
-    """List available static KB namespaces from S3 folders."""
+    """List the selectable static business topics.
+
+    Driven by the in-code registry, so the option list is byte-identical in every
+    environment and always contains only namespaces that the chat/voice flows
+    accept. The S3 listing is reported as diagnostics only: an unreachable or
+    differently-shaped bucket must not empty the selector nor fail the request,
+    which previously left the frontend with no options and no visible error.
+    """
+    sources = []
+
+    for option in list_knowledge_source_options():
+        chunks = len(kb_store.get(option["value"], []))
+        readiness = get_static_kb_status(option["value"])
+
+        sources.append(
+            {
+                **option,
+                "chunks": chunks,
+                "loaded": readiness["status"] == "ready",
+                # "ready" | "loading" | "unavailable"; error says why when not ready.
+                "status": readiness["status"],
+                "error": readiness["error"],
+            }
+        )
+
+    discovery: dict[str, Any] = {
+        "ok": True,
+        "namespaces": [],
+        "error": None,
+    }
+
     try:
-        return {
-            "sources": list_static_namespaces(),
-        }
+        discovery["namespaces"] = [
+            source["value"] for source in list_static_namespaces()
+        ]
 
     except StaticKBLoaderError as exc:
-        logger.exception("Static KB source listing failed.")
+        logger.warning("Static KB discovery unavailable: %s", exc)
 
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "code": "static_kb_source_listing_error",
-                "message": str(exc),
-            },
-        ) from exc
+        discovery["ok"] = False
+        discovery["error"] = str(exc)
+
+    return {
+        "sources": sources,
+        "discovery": discovery,
+    }

@@ -6,6 +6,8 @@ builds session-aware context, calls the LLM service, stores the conversation
 turns, and returns the assistant answer with source metadata.
 """
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.requests import ChatRequest, ChatResponse, SourceChunk
@@ -13,7 +15,12 @@ from app.core.system_prompts import resolve_system_prompt
 from app.services.llm import llm_client
 from app.services.memory import add_turn, format_history
 from app.core.knowledge_sources import resolve_knowledge_namespaces
+from app.routers.errors import knowledge_source_http_error
 from app.services.kb import kb_full_text, kb_search_many
+from app.services.static_kb_jobs import (
+    KnowledgeSourceNotReadyError,
+    ensure_static_kbs_ready,
+)
 
 
 router = APIRouter()
@@ -52,9 +59,16 @@ async def ask(body: ChatRequest):
             },
         ) from exc
 
+    # Fail loudly rather than let the LLM answer a topic it has no content for.
+    try:
+        ensure_static_kbs_ready(namespaces)
+    except KnowledgeSourceNotReadyError as exc:
+        raise knowledge_source_http_error(exc) from exc
+
     full_guide = kb_full_text(namespaces)
 
-    matches = [] if full_guide else kb_search_many(
+    matches = [] if full_guide else await asyncio.to_thread(
+        kb_search_many,
         query=retrieval_query,
         namespaces=namespaces,
         top_k=body.top_k,

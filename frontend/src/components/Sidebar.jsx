@@ -16,15 +16,29 @@ const CONFIG_OPTIONS = {
   ],
 };
 
+// Keyed by the backend's topic status; "ready" and the upload entry get none.
+const SOURCE_STATUS_SUFFIX = {
+  loading: " (loading…)",
+  unavailable: " (unavailable)",
+};
+
 export default function Sidebar({
   isOpen,
   onToggle,
   config,
   onConfigChange,
   knowledgeSources = [],
+  selectedSource = "",
+  sourcesError = null,
+  uploadedDocs = [],
+  onUploaded,
   sessionId,
   uploadNamespace,
 }) {
+  const selectedTopic = knowledgeSources.find(
+    (source) => source.value === selectedSource
+  );
+
   return (
     <aside
         className={`h-full w-80 fixed right-0 top-0 z-50 flex flex-col shadow-sm bg-white border-l border-[#c7c4d7] panel-transition ${
@@ -60,16 +74,37 @@ export default function Sidebar({
                   Knowledge Source
                 </label>
                 <select
-                  value={config.knowledgeSource}
+                  value={selectedSource}
                   onChange={(e) => onConfigChange("knowledgeSource", e.target.value)}
                   className="w-full bg-white border border-[#c7c4d7] rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#4f5f76]"
                 >
                   {knowledgeSources.map((source) => (
-                    <option key={source.value} value={source.value}>
+                    <option
+                      key={source.value}
+                      value={source.value}
+                      // A topic that cannot answer is shown but not selectable,
+                      // with the reason as its tooltip.
+                      disabled={source.status === "unavailable"}
+                      title={source.error ?? undefined}
+                    >
                       {source.label}
+                      {SOURCE_STATUS_SUFFIX[source.status] ?? ""}
                     </option>
                   ))}
                 </select>
+
+                {selectedTopic?.error && (
+                  <p className="mt-1 text-[10px] text-amber-700 leading-snug">
+                    {selectedTopic.error}
+                  </p>
+                )}
+
+                {sourcesError && (
+                  <p className="mt-1 text-[10px] text-red-600 leading-snug">
+                    Saved topics could not be loaded, so only PDF upload is
+                    available. {sourcesError}
+                  </p>
+                )}
               </div>
               {/* Language */}
               <div>
@@ -122,12 +157,41 @@ export default function Sidebar({
             </div>
           </div>
 
-          {/* Instructions / Upload */}
-          {config.knowledgeSource === "cache" && (
+          {/* Instructions / Upload -- only while the upload entry is the chosen
+              source, so picking a saved topic hides it. */}
+          {selectedSource === "cache" && (
             <div className="px-6 pb-6 flex-1 flex flex-col">
-              <h3 className="text-sm font-bold text-[#4f5f76] mb-3">Session PDF Upload</h3>
-              <FileUpload namespace={uploadNamespace ?? `cache:${sessionId}`} />
-            </div>
+              <h3 className="text-sm font-bold text-[#4f5f76] mb-1">Session PDF Upload</h3>
+              <p className="text-[11px] text-[#565e74] mb-3">
+                {uploadedDocs.length > 0
+                  ? "Answers are using the PDFs below."
+                  : "Upload a PDF and answers will use it right away."}
+              </p>
+
+              <FileUpload
+                namespace={uploadNamespace ?? `cache:${sessionId}`}
+                onUploaded={onUploaded}
+              />
+
+              {uploadedDocs.length > 0 && (
+                <ul className="mt-3 space-y-1">
+                  {uploadedDocs.map((doc, index) => (
+                    <li
+                      key={`${doc.name}-${index}`}
+                      className="flex items-center gap-1.5 text-[11px] text-[#565e74]"
+                    >
+                      <span className="material-symbols-outlined text-[14px] text-green-600 shrink-0">
+                        description
+                      </span>
+                      <span className="truncate">{doc.name}</span>
+                      <span className="shrink-0 text-[#8b90a0]">
+                        · {doc.chunks} chunks
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+            )}
+          </div>
           )}
         </div>
 
