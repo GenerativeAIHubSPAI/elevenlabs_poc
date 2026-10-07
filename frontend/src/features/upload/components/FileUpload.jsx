@@ -18,7 +18,7 @@ function statusColor(status) {
   return "text-[#565e74] group-hover:text-[#4f5f76]";
 }
 
-export default function FileUpload({ namespace = "default" }) {
+export default function FileUpload({ namespace = "default", onUploaded }) {
   const inputRef            = useRef(null);
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState(null);
@@ -41,6 +41,12 @@ export default function FileUpload({ namespace = "default" }) {
       const result = await uploadFile(file, namespace);
       setStatus("success");
       setMessage(`${result.ingested_chunks} chunks indexed from "${result.source_name}" (${result.pages_processed} pages)`);
+
+      onUploaded?.({
+        name: result.source_name ?? file.name,
+        chunks: result.ingested_chunks,
+        pages: result.pages_processed,
+      });
     } catch (e) {
       setStatus("error");
       setMessage(e.message);
