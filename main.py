@@ -1,7 +1,5 @@
 # main.py
 
-import asyncio
-import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -16,66 +14,22 @@ import app.routers.tts as tts
 import app.routers.voice as voice
 import app.routers.voice_turn as voice_turn
 
-from app.services.static_kb_loader import (
-    StaticKBLoaderError,
-    list_static_namespaces,
-    load_static_namespace,
-)
+from app.services.static_kb_jobs import start_static_kb_preload
 
-logger = logging.getLogger(__name__)
 
-logger.warning("STATIC KB AUTOLOAD STARTED")
-
-async def preload_static_kbs() -> None:
-    """Preload static KBs into memory when the backend container starts."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     enabled = os.getenv("KB_AUTOLOAD_STATIC", "true").lower() not in {
         "0",
         "false",
         "no",
     }
 
-    if not enabled:
-        logger.info("Static KB autoload disabled.")
-        return
+    # Loading used to be awaited here, and uvicorn accepts no connection until
+    # startup completes, so the container answered 502 for as long as S3 and
+    # Bedrock took. It now runs in the background and /health reports progress.
+    start_static_kb_preload(enabled)
 
-    try:
-        sources = list_static_namespaces()
-        namespaces = [source["value"] for source in sources]
-
-    except StaticKBLoaderError:
-        logger.exception("Failed to discover static KB namespaces.")
-        return
-
-    if not namespaces:
-        logger.warning("No static KB namespaces discovered.")
-        return
-
-    for namespace in namespaces:
-        try:
-            logger.info("Preloading static KB namespace=%s", namespace)
-
-            result = await asyncio.to_thread(
-                load_static_namespace,
-                namespace,
-            )
-
-            logger.info(
-                "Static KB preloaded namespace=%s documents=%s chunks=%s",
-                namespace,
-                result.get("documents_loaded"),
-                result.get("chunks_ingested"),
-            )
-
-        except Exception:
-            logger.exception(
-                "Failed to preload static KB namespace=%s",
-                namespace,
-            )
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await preload_static_kbs()
     yield
 
 

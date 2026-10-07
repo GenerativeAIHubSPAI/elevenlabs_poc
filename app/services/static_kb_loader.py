@@ -12,11 +12,14 @@ import json
 
 from typing import Any
 
+from functools import lru_cache
+
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+from app.core.aws import aws_client_config
 from app.core.config import get_settings
 
-from app.services.kb import kb_ingest_text
+from app.services.kb import kb_ingest_pages
 from app.services.pdf_parser import extract_pdf_pages
 
 settings = get_settings()
@@ -25,10 +28,12 @@ class StaticKBLoaderError(Exception):
     """Raised when static KB loading fails."""
 
 
+@lru_cache(maxsize=1)
 def _get_s3_client():
     return boto3.client(
         "s3",
         region_name=settings.AWS_REGION,
+        config=aws_client_config(),
     )
 
 
@@ -60,7 +65,7 @@ def _read_s3_json(bucket: str, key: str) -> dict[str, Any]:
         content = response["Body"].read().decode("utf-8")
         return json.loads(content)
 
-    except ClientError as exc:
+    except (ClientError, BotoCoreError) as exc:
         raise StaticKBLoaderError(
             f"Could not read S3 JSON object s3://{bucket}/{key}: {exc}"
         ) from exc
@@ -139,19 +144,15 @@ def load_static_namespace(namespace: str) -> dict[str, Any]:
 
         pages = extract_pdf_pages(file_bytes)
 
-        document_chunks = 0
-
-        for page in pages:
-            saved = kb_ingest_text(
+        document_chunks = len(
+            kb_ingest_pages(
                 title=title,
-                text=page["text"],
+                pages=pages,
                 namespace=namespace,
                 source_type="pdf",
                 source_name=s3_key,
-                page=page["page"],
             )
-
-            document_chunks += len(saved)
+        )
 
         total_chunks += document_chunks
 

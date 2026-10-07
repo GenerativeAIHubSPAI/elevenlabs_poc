@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 from typing import Any
 
 import boto3
@@ -26,6 +28,7 @@ import logging
 
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
+from app.core.aws import aws_client_config
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -35,6 +38,20 @@ kb_store: dict[str, list[dict[str, Any]]] = {}
 # Full (unchunked) text of every ingested page, so small knowledge bases such as
 # a single guide can be passed to the LLM in full instead of as retrieved chunks.
 kb_documents: dict[str, list[dict[str, Any]]] = {}
+
+# Ingestion runs in worker threads (uploads and the static preload at the same
+# time), so writes to the two stores above are serialized.
+_kb_write_lock = Lock()
+
+# One pool for the whole process caps concurrent Bedrock calls across every
+# ingestion, instead of each upload opening its own burst of requests.
+_embedding_pool = ThreadPoolExecutor(
+    max_workers=max(1, settings.KB_EMBEDDING_CONCURRENCY),
+    thread_name_prefix="kb-embed",
+)
+
+_bedrock_client = None
+_bedrock_client_lock = Lock()
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +68,24 @@ class EmbeddingProviderError(KnowledgeBaseError):
     """Raised when the embedding provider request fails."""
 
 def _get_bedrock_client():
+    """Return the shared Bedrock Runtime client, creating it on first use.
+
+    boto3 clients are thread-safe once built but creating one is not, and
+    building a fresh client for every chunk made ingestion needlessly slow.
+    """
+    global _bedrock_client
+
+    if _bedrock_client is not None:
+        return _bedrock_client
+
+    with _bedrock_client_lock:
+        if _bedrock_client is None:
+            _bedrock_client = _create_bedrock_client()
+
+    return _bedrock_client
+
+
+def _create_bedrock_client():
     if not settings.BEDROCK_EMBEDDING_MODEL_ID:
         raise EmbeddingConfigurationError(
             "BEDROCK_EMBEDDING_MODEL_ID is not configured."
@@ -70,6 +105,9 @@ def _get_bedrock_client():
         return boto3.client(
             service_name="bedrock-runtime",
             region_name=settings.AWS_REGION,
+            config=aws_client_config(
+                max_pool_connections=max(10, settings.KB_EMBEDDING_CONCURRENCY),
+            ),
         )
     except Exception as exc:
         logger.exception("Failed to create Bedrock Runtime client.")
@@ -213,6 +251,72 @@ def _build_embedding_text(item: dict[str, Any]) -> str:
     return "\n".join(metadata)
 
 
+def kb_ingest_pages(
+    title: str,
+    pages: list[dict[str, Any]],
+    namespace: str,
+    source_type: str = "text",
+    source_name: str | None = None,
+):
+    """Chunk, embed and store a whole document.
+
+    `pages` holds dicts with "text" and an optional "page" number. Embeddings run
+    in parallel on the shared pool, and the document is added to the store only
+    once every chunk is embedded: searches never see half a document, and a
+    failed embedding leaves nothing behind.
+    """
+    documents = []
+    items = []
+
+    for page in pages:
+        text = page["text"]
+        page_number = page.get("page")
+
+        documents.append(
+            {
+                "title": title,
+                "source_name": source_name,
+                "page": page_number,
+                "text": text,
+            }
+        )
+
+        for chunk_index, chunk in enumerate(chunk_text(text)):
+            items.append(
+                {
+                    "chunk_id": str(uuid.uuid4()),
+                    "title": title,
+                    "text": chunk,
+                    "namespace": namespace,
+                    "source_type": source_type,
+                    "source_name": source_name,
+                    "page": page_number,
+                    "chunk_index": chunk_index,
+                }
+            )
+
+    embeddings = _embedding_pool.map(
+        embed_text,
+        [_build_embedding_text(item) for item in items],
+    )
+
+    for item, embedding in zip(items, embeddings):
+        item["embedding"] = embedding
+
+    with _kb_write_lock:
+        kb_documents.setdefault(namespace, []).extend(documents)
+        kb_store.setdefault(namespace, []).extend(items)
+
+    return [
+        {
+            key: value
+            for key, value in item.items()
+            if key != "embedding"
+        }
+        for item in items
+    ]
+
+
 def kb_ingest_text(
     title: str,
     text: str,
@@ -221,47 +325,13 @@ def kb_ingest_text(
     source_name: str | None = None,
     page: int | None = None,
 ):
-    if namespace not in kb_store:
-        kb_store[namespace] = []
-
-    kb_documents.setdefault(namespace, []).append(
-        {
-            "title": title,
-            "source_name": source_name,
-            "page": page,
-            "text": text,
-        }
+    return kb_ingest_pages(
+        title=title,
+        pages=[{"text": text, "page": page}],
+        namespace=namespace,
+        source_type=source_type,
+        source_name=source_name,
     )
-
-    chunks = chunk_text(text)
-    saved = []
-
-    for chunk_index, chunk in enumerate(chunks):
-        item = {
-            "chunk_id": str(uuid.uuid4()),
-            "title": title,
-            "text": chunk,
-            "namespace": namespace,
-            "source_type": source_type,
-            "source_name": source_name,
-            "page": page,
-            "chunk_index": chunk_index,
-        }
-
-        embedding_input = _build_embedding_text(item)
-        item["embedding"] = embed_text(embedding_input)
-
-        kb_store[namespace].append(item)
-
-        saved.append(
-            {
-                key: value
-                for key, value in item.items()
-                if key != "embedding"
-            }
-        )
-
-    return saved
 
 
 def kb_search(query: str, namespace: str, top_k: int = 4):

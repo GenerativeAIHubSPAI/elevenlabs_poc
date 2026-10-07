@@ -23,6 +23,7 @@ import boto3
 import httpx
 from fastapi import HTTPException
 
+from app.core.aws import aws_client_config
 from app.core.config import get_settings
 from app.core.system_prompts import FAREWELL_PHRASES
 
@@ -63,6 +64,7 @@ class LLMClient:
             self._bedrock_client = boto3.client(
                 service_name="bedrock-runtime",
                 region_name=settings.AWS_REGION,
+                config=aws_client_config(read_timeout=60),
             )
 
         return self._bedrock_client

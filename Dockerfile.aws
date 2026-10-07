@@ -71,7 +71,15 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Everything else (incl. ALB health check on / or /health) → SPA, always 200
+    # ALB and ECS health checks reach the task directly, without the CloudFront
+    # prefix: send them to uvicorn so they test the backend, not the static SPA.
+    location = /health {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 5s;
+    }
+
+    # Everything else → SPA, always 200
     location / {
         root /var/www/html;
         index index.html;
@@ -135,7 +143,49 @@ stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
+
+; If a program exhausts its restarts, stop the container so ECS replaces the
+; task. Otherwise nginx keeps it alive, serving the SPA with no backend.
+; stdout is this listener's protocol channel, so only stderr is logged.
+[eventlistener:exit_on_fatal]
+command=python3 /usr/local/bin/supervisor_exit_on_fatal.py
+events=PROCESS_STATE_FATAL
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
 EOF
+
+RUN cat > /usr/local/bin/supervisor_exit_on_fatal.py <<'EOF'
+import os
+import signal
+import sys
+
+while True:
+    sys.stdout.write("READY\n")
+    sys.stdout.flush()
+
+    header = dict(token.split(":", 1) for token in sys.stdin.readline().split())
+    payload = sys.stdin.read(int(header["len"]))
+
+    sys.stderr.write(f"Program entered FATAL, stopping the container: {payload}\n")
+    sys.stderr.flush()
+
+    sys.stdout.write("RESULT 2\nOK")
+    sys.stdout.flush()
+
+    os.kill(os.getppid(), signal.SIGTERM)
+EOF
+
+# Container health check: goes through nginx to uvicorn, so it fails if either is
+# down. Referenced by the ECS task definition (see deploy_app.yml) -- ECS ignores
+# the Dockerfile HEALTHCHECK, which only serves local `docker run`.
+RUN cat > /usr/local/bin/healthcheck <<'EOF'
+#!/bin/sh
+exec python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health', timeout=4)"
+EOF
+RUN chmod +x /usr/local/bin/healthcheck
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["/usr/local/bin/healthcheck"]
 
 # Startup script: pick the right nginx config based on APP_PREFIX
 RUN cat > /entrypoint.sh <<'EOF'

@@ -10,6 +10,7 @@ import {
 import "./styles/main.css";
 import { fetchStaticKnowledgeSources } from "./services/api";
 
+const SOURCES_REFRESH_MS = 5000;
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -131,6 +132,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let refreshTimer = null;
 
     async function loadKnowledgeSources() {
       try {
@@ -142,6 +144,12 @@ export default function App() {
 
         setKnowledgeSources(topics);
         setSourcesError(null);
+
+        // Topics load in the background after a deploy; refresh until none is
+        // still loading so they become selectable without a page reload.
+        if (topics.some((topic) => topic.status === "loading")) {
+          refreshTimer = setTimeout(loadKnowledgeSources, SOURCES_REFRESH_MS);
+        }
 
         setConfig((prev) => {
           if (prev.knowledgeSource === "cache") {
@@ -173,6 +181,7 @@ export default function App() {
 
     return () => {
       cancelled = true;
+      clearTimeout(refreshTimer);
     };
   }, []);
 

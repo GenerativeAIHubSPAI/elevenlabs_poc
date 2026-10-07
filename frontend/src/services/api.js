@@ -60,7 +60,10 @@ export async function sendAudio(samples, sr) {
     "speech.wav"
   );
   const res = await fetch(VOICE_TURN_URL, { method: "POST", body: form });
-  if (!res.ok) throw new Error(`Error ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    throw new Error(describeError(payload, res.status));
+  }
   return res;
 }
 

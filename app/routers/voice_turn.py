@@ -9,16 +9,21 @@ This route provides a simpler alternative to the realtime WebSocket pipeline for
 testing and frontend integration.
 """
 
+import asyncio
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from websockets import asyncio
 
 from app.core.system_prompts import resolve_system_prompt
 from app.core.config import get_settings
 from app.services.elevenlabs import ElevenLabsClient
+from app.routers.errors import knowledge_source_http_error
 from app.services.kb import kb_full_text, kb_search
+from app.services.static_kb_jobs import (
+    KnowledgeSourceNotReadyError,
+    ensure_static_kbs_ready,
+)
 from app.services.llm import llm_client
 
 router = APIRouter()
@@ -81,6 +86,12 @@ async def voice_turn(
 ):
     selected_voice_id = resolve_voice_id(voice_id)
 
+    # Before STT, so a turn that cannot be answered costs no transcription.
+    try:
+        ensure_static_kbs_ready([namespace])
+    except KnowledgeSourceNotReadyError as exc:
+        raise knowledge_source_http_error(exc) from exc
+
     content = await file.read()
 
     if not content:
@@ -106,7 +117,8 @@ async def voice_turn(
 
     full_guide = kb_full_text([namespace])
 
-    matches = [] if full_guide else kb_search(
+    matches = [] if full_guide else await asyncio.to_thread(
+        kb_search,
         query=transcript,
         namespace=namespace,
         top_k=top_k,

@@ -25,6 +25,10 @@ from app.services.elevenlabs import ElevenLabsClient
 from app.services.kb import kb_full_text, kb_search
 from app.services.llm import llm_client
 from app.services.memory import add_turn, format_history
+from app.services.static_kb_jobs import (
+    KnowledgeSourceNotReadyError,
+    ensure_static_kbs_ready,
+)
 
 router = APIRouter()
 settings = get_settings()
@@ -420,6 +424,13 @@ async def voice_stream(websocket: WebSocket) -> None:
         await websocket.close()
         return
 
+    # Warn up front instead of after the user's first question. The socket stays
+    # open: a loading topic may be ready by then, and each turn checks again.
+    try:
+        ensure_static_kbs_ready([namespace])
+    except KnowledgeSourceNotReadyError as exc:
+        await websocket.send_json({"type": "error", **exc.to_detail()})
+
     stt_url = _build_realtime_stt_url(language_code=language_code)
 
     current_tts_task: asyncio.Task | None = None
@@ -573,9 +584,26 @@ async def voice_stream(websocket: WebSocket) -> None:
                             else transcript
                         )
 
+                        # Checked every turn: a topic can finish loading (or
+                        # fail) while the conversation is open.
+                        try:
+                            ensure_static_kbs_ready([namespace])
+                        except KnowledgeSourceNotReadyError as exc:
+                            await websocket.send_json(
+                                {
+                                    "type": "user_committed_transcript",
+                                    "text": transcript,
+                                }
+                            )
+                            await websocket.send_json(
+                                {"type": "error", **exc.to_detail()}
+                            )
+                            break
+
                         full_guide = kb_full_text([namespace])
 
-                        matches = [] if full_guide else kb_search(
+                        matches = [] if full_guide else await asyncio.to_thread(
+                            kb_search,
                             query=retrieval_query,
                             namespace=namespace,
                             top_k=settings.KB_TOP_K,
