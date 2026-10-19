@@ -13,6 +13,7 @@ import asyncio
 import base64
 import contextlib
 import json
+import logging
 import uuid
 from urllib.parse import urlencode
 
@@ -33,6 +34,7 @@ from app.services.static_kb_jobs import (
 router = APIRouter()
 settings = get_settings()
 eleven = ElevenLabsClient()
+logger = logging.getLogger(__name__)
 
 EARLY_TURN_COUNT = 3
 EARLY_RESPONSE_DELAY_SECONDS = 0.0
@@ -233,6 +235,18 @@ def _transcript_merge_wait_seconds(
         return EARLY_TRANSCRIPT_MERGE_SECONDS
 
     return NORMAL_TRANSCRIPT_MERGE_SECONDS
+
+
+def _turn_error_message(exc: Exception) -> str:
+    """Readable reason for a failed turn; HTTPException details carry the provider error."""
+    detail = getattr(exc, "detail", None)
+
+    if isinstance(detail, dict):
+        reason = detail.get("error") or detail.get("message")
+    else:
+        reason = detail or str(exc)
+
+    return f"No se ha podido generar la respuesta: {reason or type(exc).__name__}"
 
 
 def _response_delay_seconds(completed_turns: int) -> float:
@@ -600,40 +614,60 @@ async def voice_stream(websocket: WebSocket) -> None:
                             )
                             break
 
-                        full_guide = kb_full_text([namespace])
+                        # This worker runs as a background task: an uncaught error
+                        # here would kill it silently and the assistant would stop
+                        # answering for the rest of the call. Report it and keep
+                        # listening instead.
+                        try:
+                            full_guide = kb_full_text([namespace])
 
-                        matches = [] if full_guide else await asyncio.to_thread(
-                            kb_search,
-                            query=retrieval_query,
-                            namespace=namespace,
-                            top_k=settings.KB_TOP_K,
-                        )
+                            matches = [] if full_guide else await asyncio.to_thread(
+                                kb_search,
+                                query=retrieval_query,
+                                namespace=namespace,
+                                top_k=settings.KB_TOP_K,
+                            )
 
-                        context = [
-                            {
-                                "chunk_id": match["chunk_id"],
-                                "title": match["title"],
-                                "text": match["text"],
-                                "score": match["score"],
-                            }
-                            for match in matches
-                        ]
+                            context = [
+                                {
+                                    "chunk_id": match["chunk_id"],
+                                    "title": match["title"],
+                                    "text": match["text"],
+                                    "score": match["score"],
+                                }
+                                for match in matches
+                            ]
 
-                        system_prompt = _build_user_aware_system_prompt(
-                            namespace=namespace,
-                            user_id=user_id,
-                            display_name=effective_display_name,
-                            auth_mode=auth_mode,
-                        )
+                            system_prompt = _build_user_aware_system_prompt(
+                                namespace=namespace,
+                                user_id=user_id,
+                                display_name=effective_display_name,
+                                auth_mode=auth_mode,
+                            )
 
-                        answer = await llm_client.answer(
-                            system_prompt=system_prompt,
-                            question=transcript,
-                            context_chunks=context,
-                            conversation_history=conversation_history,
-                            spoken=True,
-                            full_guide=full_guide,
-                        )
+                            answer = await llm_client.answer(
+                                system_prompt=system_prompt,
+                                question=transcript,
+                                context_chunks=context,
+                                conversation_history=conversation_history,
+                                spoken=True,
+                                full_guide=full_guide,
+                            )
+                        except Exception as exc:
+                            logger.exception("Voice turn failed")
+                            await websocket.send_json(
+                                {
+                                    "type": "user_committed_transcript",
+                                    "text": transcript,
+                                }
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "message": _turn_error_message(exc),
+                                }
+                            )
+                            break
 
                         delay_seconds = _response_delay_seconds(assistant_turn_count)
 

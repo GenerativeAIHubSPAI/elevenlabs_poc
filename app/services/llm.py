@@ -25,7 +25,7 @@ from fastapi import HTTPException
 
 from app.core.aws import aws_client_config
 from app.core.config import get_settings
-from app.core.system_prompts import FAREWELL_PHRASES
+from app.core.system_prompts import CLOSING_QUESTIONS, FAREWELL_PHRASES
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -33,6 +33,56 @@ logger = logging.getLogger(__name__)
 # The model writes a one-line protocol-state note before each answer (see the
 # per-turn instructions); it is stripped before the answer is returned.
 STATE_TAG_RE = re.compile(r"<estado>(.*?)</estado>", re.S)
+
+# Bedrock errors meaning "this model is unavailable right now", which justify
+# retrying on BEDROCK_FALLBACK_MODEL_ID.
+FALLBACK_ERROR_CODES = {
+    "ServiceUnavailableException",
+    "ThrottlingException",
+    "ModelNotReadyException",
+    "InternalServerException",
+    "ModelTimeoutException",
+}
+
+
+# A final question asking whether the user needs anything else, in any wording.
+CLOSING_VARIANT_RE = {
+    "es": re.compile(r"¿[^¿?]*\balgo más\b[^¿?]*\?\s*$", re.I),
+    "en": re.compile(r"(?:^|(?<=[.!?]\s))[^.!?]*\banything else\b[^.!?]*\?\s*$", re.I | re.M),
+}
+
+ENGLISH_MARKERS = re.compile(
+    r"\b(the|my|you|your|is|it|it's|i|i'm|i've|that's|thanks|thank|please|what|how|"
+    r"can|want|need|ok|okay|yes|bye|goodbye|hi|hello|all)\b",
+    re.I,
+)
+SPANISH_MARKERS = re.compile(
+    r"[ñáéíóú¿¡]|\b(el|la|los|las|que|de|mi|es|gracias|sí|por|quiero|hola|adiós|"
+    r"nada|vale|vale,|bueno|tengo|necesito)\b",
+    re.I,
+)
+
+
+def _detect_language(question: str, conversation_history: str | None) -> str | None:
+    """Rough "es"/"en" guess from the user's own words; None when unclear."""
+    user_lines = [question]
+    for line in (conversation_history or "").splitlines():
+        if line.upper().startswith("USER:"):
+            user_lines.append(line[5:])
+
+    text = " ".join(user_lines[:1] + user_lines[-3:])
+    english = len(ENGLISH_MARKERS.findall(text))
+    spanish = len(SPANISH_MARKERS.findall(text))
+
+    if english > spanish:
+        return "en"
+    if spanish > english:
+        return "es"
+    return None
+
+
+def _error_code(exc: Exception) -> str | None:
+    return getattr(exc, "response", {}).get("Error", {}).get("Code")
 
 # Only applied on voice routes: TTS reads digits and symbols poorly, but the text
 # chat should keep regular numerals.
@@ -225,7 +275,20 @@ class LLMClient:
             answer = await self._answer_openai(f"{full_system}\n\n{user_text}")
 
         self.last_state = self._extract_state(answer)
-        return self._enforce_farewell(self._strip_state(answer))
+        spoken_answer = self._strip_state(answer)
+
+        if not spoken_answer:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "provider": settings.LLM_PROVIDER,
+                    "message": "The model returned only its internal state note, with no answer.",
+                    "state": self.last_state,
+                },
+            )
+
+        language = _detect_language(question, conversation_history)
+        return self._enforce_closing(self._enforce_farewell(spoken_answer, language))
 
     @staticmethod
     def _extract_state(answer: str) -> str | None:
@@ -240,12 +303,28 @@ class LLMClient:
         text = re.sub(r"<estado>[^\n]*\n?", "", text)
         return text.replace("</estado>", "").strip()
 
-    def _enforce_farewell(self, answer: str) -> str:
-        """Return only the farewell phrase when the model used it, dropping any extra text."""
+    def _enforce_farewell(self, answer: str, language: str | None = None) -> str:
+        """Return only the farewell phrase when the model used it, dropping any extra text.
+
+        The phrase follows the user's language when it can be detected, since the
+        model sometimes answers an English caller with the Spanish farewell.
+        """
         normalized = answer.lower().replace("“", "").replace("”", "").replace('"', "")
         for phrase in FAREWELL_PHRASES:
             if phrase.lower() in normalized:
+                if language == "en":
+                    return FAREWELL_PHRASES[1]
+                if language == "es":
+                    return FAREWELL_PHRASES[0]
                 return phrase
+        return answer
+
+    @staticmethod
+    def _enforce_closing(answer: str) -> str:
+        """Replace a reworded closing question ("¿Desea algo más?") with the exact one."""
+        for language, pattern in CLOSING_VARIANT_RE.items():
+            if pattern.search(answer):
+                return pattern.sub(CLOSING_QUESTIONS[language], answer)
         return answer
 
     async def _answer_bedrock(
@@ -261,9 +340,9 @@ class LLMClient:
             # them: later turns are faster and the cached tokens cost ~10%.
             system += [{"text": guide_block}, {"cachePoint": {"type": "default"}}]
 
-        def _converse() -> dict:
+        def _converse(model_id: str) -> dict:
             return self._get_bedrock_client().converse(
-                modelId=settings.BEDROCK_MODEL_ID,
+                modelId=model_id,
                 system=system,
                 messages=[{"role": "user", "content": [{"text": user_text}]}],
                 inferenceConfig={
@@ -272,18 +351,36 @@ class LLMClient:
                 },
             )
 
-        try:
-            response = await asyncio.to_thread(_converse)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502,
-                detail={
-                    "provider": "bedrock",
-                    "message": "Bedrock request failed. Check AWS_REGION, BEDROCK_MODEL_ID and credentials.",
-                    "model": settings.BEDROCK_MODEL_ID,
-                    "error": str(exc),
-                },
-            ) from exc
+        model_ids = [settings.BEDROCK_MODEL_ID]
+        if settings.BEDROCK_FALLBACK_MODEL_ID:
+            model_ids.append(settings.BEDROCK_FALLBACK_MODEL_ID)
+
+        for attempt, model_id in enumerate(model_ids):
+            try:
+                response = await asyncio.to_thread(_converse, model_id)
+                break
+            except Exception as exc:
+                is_last = attempt == len(model_ids) - 1
+                # Only switch models when the model itself is unavailable; auth or
+                # request errors would fail the same way on the fallback.
+                if not is_last and _error_code(exc) in FALLBACK_ERROR_CODES:
+                    logger.warning(
+                        "Bedrock model %s unavailable (%s); retrying with %s",
+                        model_id,
+                        _error_code(exc),
+                        model_ids[attempt + 1],
+                    )
+                    continue
+
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "provider": "bedrock",
+                        "message": "Bedrock request failed. Check AWS_REGION, BEDROCK_MODEL_ID and credentials.",
+                        "model": model_id,
+                        "error": str(exc),
+                    },
+                ) from exc
 
         self.last_usage = {
             **response.get("usage", {}),

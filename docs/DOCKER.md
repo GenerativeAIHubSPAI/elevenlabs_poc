@@ -22,7 +22,8 @@ ELEVENLABS_VOICE_ID=your_default_voice_id
 ELEVENLABS_DEFAULT_VOICE_ID=your_default_voice_id
 
 LLM_PROVIDER=bedrock
-BEDROCK_MODEL_ID=eu.anthropic.claude-haiku-4-5-20251001-v1:0
+BEDROCK_MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+BEDROCK_FALLBACK_MODEL_ID=eu.anthropic.claude-sonnet-4-5-20250929-v1:0
 AWS_REGION=eu-west-3
 AWS_BEARER_TOKEN_BEDROCK=your_bedrock_bearer_token
 ```

@@ -46,7 +46,12 @@ class Settings(BaseSettings):
     # Bedrock
     AWS_REGION: str = "eu-west-3"
     AWS_BEARER_TOKEN_BEDROCK: str | None = None
-    BEDROCK_MODEL_ID: str = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # The "global." profile is used because the "eu." Haiku 4.5 profile returned
+    # ServiceUnavailableException in October 2026. Requests may be processed
+    # outside the EU; use an "eu." model if data residency is required.
+    BEDROCK_MODEL_ID: str = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # Used when the main model is unavailable or throttled. Empty disables it.
+    BEDROCK_FALLBACK_MODEL_ID: str = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
     BEDROCK_MAX_TOKENS: int = 700
     BEDROCK_TEMPERATURE: float = 0.0
 
