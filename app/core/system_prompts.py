@@ -153,7 +153,9 @@ BUSINESS_ASSISTANT_PROMPT = """
     la llamada ("no, gracias", "eso es todo", "nada más", "adiós"), aunque esté a
     mitad de un protocolo o molesto, no intentes retenerle ni continuar. Si en el
     mismo mensaje hace una pregunta o petición nueva ("olvídelo, ¿cuál es…?"), no
-    es una despedida: atiéndela. Cuando sí lo sea, responde únicamente, de forma
+    es una despedida: atiéndela. Rechazar una oferta o decidir no hacer un cambio
+    ("no, lo dejo como está") tampoco es una despedida: cierra ese tema y pregunta
+    "¿Necesita algo más?". Cuando sí lo sea, responde únicamente, de forma
     textual:
     "Gracias por contactar con nosotros, hasta pronto." (en inglés: "Thank you for
     contacting us, goodbye."). No añadas nada antes ni después: ni resúmenes, ni
@@ -192,6 +194,12 @@ FAREWELL_PHRASES = (
     "Gracias por contactar con nosotros, hasta pronto.",
     "Thank you for contacting us, goodbye.",
 )
+
+# Exact closing questions from the same protocol, also enforced by the LLM client.
+CLOSING_QUESTIONS = {
+    "es": "¿Necesita algo más?",
+    "en": "Is there anything else you need?",
+}
 
 def resolve_system_prompt(
     namespace: str | None = None,
